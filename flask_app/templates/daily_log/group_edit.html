@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Izmeni') }} — {{ date_str }} {{ venue_label }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">
+      <span class="badge {{ venue_badge }}" style="font-size:1rem;margin-right:8px;">{{ venue_label }}</span>
+      {{ date_str }}
+    </h1>
+    <p class="page-subtitle">{{ events|length }} {{ tr('događaja — grupna izmena') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('daily_log.index') }}" class="btn btn-secondary">{{ tr('← Daily Log') }}</a>
+  </div>
+</div>
+
+{# Tabs #}
+<div style="display:flex;gap:0;border-bottom:2px solid var(--border-soft);margin-bottom:20px;overflow-x:auto;">
+  {% for e in events %}
+  <button class="tab-btn {% if loop.first %}active{% endif %}"
+          onclick="showTab('tab-{{ e.event_id }}')"
+          id="btn-tab-{{ e.event_id }}"
+          style="padding:10px 20px;border:none;background:none;cursor:pointer;
+                 font-size:.85rem;font-weight:600;white-space:nowrap;
+                 border-bottom:3px solid transparent;margin-bottom:-2px;color:var(--ink-muted);">
+    {{ e.event_name or e.organiser or tr('Događaj #')~e.event_id }}
+  </button>
+  {% endfor %}
+  <a href="{{ new_event_url }}"
+     style="padding:10px 20px;font-size:.85rem;font-weight:600;white-space:nowrap;
+            border-bottom:3px solid transparent;margin-bottom:-2px;
+            color:var(--accent);text-decoration:none;">{{ tr('+ Novi događaj') }}</a>
+</div>
+
+{% for e in events %}
+<div id="tab-{{ e.event_id }}" class="tab-panel" style="display:{% if loop.first %}block{% else %}none{% endif %};">
+
+  {# Quick KPI bar #}
+  {% if e.total_revenues or e.gross_profit %}
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;padding:12px 0;border-bottom:1px solid var(--border-soft);">
+    <div style="font-size:.8rem;color:var(--ink-muted);">
+      {{ tr('Prihodi:') }} <strong>{{ "{:,.0f}".format(e.total_revenues).replace(",",".") if e.total_revenues else "—" }} RSD</strong>
+    </div>
+    <div style="font-size:.8rem;color:var(--ink-muted);">
+      {{ tr("Gross profit:") }} <strong style="color:{% if e.gross_profit and e.gross_profit>=0 %}var(--green){% else %}var(--red){% endif %};">
+        {{ "{:,.0f}".format(e.gross_profit).replace(",",".") if e.gross_profit is not none else "—" }} RSD
+      </strong>
+    </div>
+    <a href="{{ url_for('daily_log.detail', event_id=e.event_id) }}"
+       class="btn btn-ghost btn-sm" style="font-size:.75rem;margin-left:auto;">{{ tr('Detalji →') }}</a>
+    <form method="post" action="{{ url_for('daily_log.recalc', event_id=e.event_id) }}" style="display:inline;">
+      <input type="hidden" name="back_to" value="{{ back_to }}">
+      <button class="btn btn-ghost btn-sm" style="font-size:.75rem;">{{ tr('↻ Preračunaj') }}</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('daily_log.edit', event_id=e.event_id) }}">
+  <input type="hidden" name="back_to" value="{{ back_to }}">
+
+  <div class="card mb-3">
+    <div class="card-header">
+      <span class="card-title">{{ tr('Osnovni podaci') }}</span>
+      <div style="display:flex;gap:6px;">
+        <span class="badge {% if e.status=='Confirmed' %}badge-green{% else %}badge-amber{% endif %}" style="font-size:.72rem;">{{ e.status }}</span>
+        <button type="button" class="btn btn-ghost btn-sm" style="font-size:.75rem;color:var(--red);"
+                onclick="if(confirm('Obriši ovaj događaj?')){
+                  var f=document.createElement('form');f.method='POST';
+                  f.action='{{ url_for('daily_log.delete', event_id=e.event_id) }}';
+                  var i=document.createElement('input');i.type='hidden';i.name='back_to';
+                  i.value='{{ url_for('daily_log.index') }}';f.appendChild(i);
+                  document.body.appendChild(f);f.submit();}">{{ tr('Obriši') }}</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="form-row">
+        <div class="form-group"><label>{{ tr('Datum') }}</label>
+          <input type="date" name="date" required value="{{ e.date }}"></div>
+        <div class="form-group"><label>{{ tr('Lokacija') }}</label>
+          <select name="venue" required>
+            {% for v in venues %}
+              <option value="{{ v }}" {% if e.venue|lower==v|lower %}selected{% endif %}>{{ v|capitalize }}</option>
+            {% endfor %}
+          </select></div>
+        <div class="form-group"><label>{{ tr('Tip događaja') }}</label>
+          <select name="event_type">
+            <option value="">—</option>
+            {% for t in event_types %}
+              <option value="{{ t }}" {% if e.event_type and e.event_type|lower==t|lower %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+          </select></div>
+        <div class="form-group"><label>{{ tr('Status') }}</label>
+          <select name="status">
+            <option value="Confirmed" {% if e.status=='Confirmed' %}selected{% endif %}>{{ tr("Confirmed") }}</option>
+            <option value="Preliminary" {% if e.status!='Confirmed' %}selected{% endif %}>{{ tr("Preliminary") }}</option>
+          </select></div>
+      </div>
+      <div class="form-row" style="margin-top:12px;">
+        <div class="form-group"><label>{{ tr('Organizator') }}</label>
+          <input type="text" name="organiser" value="{{ e.organiser or '' }}"></div>
+        <div class="form-group" style="flex:2;"><label>{{ tr('Naziv događaja') }}</label>
+          <input type="text" name="event_name" value="{{ e.event_name or '' }}"></div>
+      </div>
+      <div class="form-row" style="margin-top:12px;">
+        <div class="form-group"><label>{{ tr('Početak') }}</label>
+          {% set _start_h = (e.event_start or '')[:2] %}
+          <select name="event_start">
+            <option value="">—</option>
+            {% for h in range(24) %}
+              {% set hh = '%02d'|format(h) %}
+              <option value="{{ hh }}:00" {% if _start_h == hh %}selected{% endif %}>{{ hh }}:00</option>
+            {% endfor %}
+          </select></div>
+        <div class="form-group"><label>{{ tr("Kraj (cutoff)") }}</label>
+          {% set _end_h = (e.event_end or '')[:2] %}
+          <select name="event_end">
+            <option value="">—</option>
+            {% for h in range(24) %}
+              {% set hh = '%02d'|format(h) %}
+              <option value="{{ hh }}:00" {% if _end_h == hh %}selected{% endif %}>{{ hh }}:00</option>
+            {% endfor %}
+          </select></div>
+        <div class="form-group"><label>{{ tr('Broj posetilaca') }}</label>
+          <input type="number" name="number_of_visitors" min="0" value="{{ e.number_of_visitors or '' }}"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Override panel -->
+  <div class="card mb-3">
+    <div class="card-header"><span class="card-title">{{ tr("Override automatskih vrednosti") }}</span>
+      <span class="text-muted" style="font-size:.78rem;">{{ tr("Ostavite prazno = koristi auto vrednost") }}</span></div>
+    <div class="card-body">
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:8px;">{{ tr('Prihodi') }}</div>
+      <div class="form-row" style="margin-bottom:14px;">
+        <div class="form-group"><label style="font-size:.78rem;">{{ tr('Prodaja net override') }}</label>
+          <input type="number" step="0.01" name="sales_net_override" value="{{ e.sales_net_override or '' }}" placeholder="auto {{ '{:,.0f}'.format(e.sales_net_auto).replace(',','.') if e.sales_net_auto else '—' }}"></div>
+        <div class="form-group"><label style="font-size:.78rem;">{{ tr('Poslovni računi override') }}</label>
+          <input type="number" step="0.01" name="business_bills_override" value="{{ e.business_bills_override or '' }}" placeholder="auto {{ '{:,.0f}'.format(e.business_bills_net_auto).replace(',','.') if e.business_bills_net_auto else '—' }}"></div>
+        <div class="form-group"><label style="font-size:.78rem;">{{ tr("Karte 3. strane override") }}</label>
+          <input type="number" step="0.01" name="third_party_override" value="{{ e.third_party_override or '' }}" placeholder="auto {{ '{:,.0f}'.format(e.third_party_auto).replace(',','.') if e.third_party_auto else '—' }}"></div>
+      </div>
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:8px;border-top:1px solid var(--border-soft);padding-top:12px;">{{ tr('Rashodi') }}</div>
+      <div class="form-row" style="margin-bottom:14px;">
+        <div class="form-group"><label style="font-size:.78rem;">{{ tr('COGS override') }}</label>
+          <input type="number" step="0.01" name="cogs_override" value="{{ e.cogs_override or '' }}" placeholder="auto {{ '{:,.0f}'.format(e.cogs_auto).replace(',','.') if e.cogs_auto else '—' }}"></div>
+        <div class="form-group"><label style="font-size:.78rem;">{{ tr('Zarade override') }}</label>
+          <input type="number" step="0.01" name="wages_override" value="{{ e.wages_override or '' }}" placeholder="auto {{ '{:,.0f}'.format(e.wages_auto).replace(',','.') if e.wages_auto else '—' }}"></div>
+        <div class="form-group"><label style="font-size:.78rem;">{{ tr('Radnici override') }}</label>
+          <input type="number" step="0.01" name="laborers_override" value="{{ e.laborers_override or '' }}" placeholder="auto {{ '{:,.0f}'.format(e.laborers_auto).replace(',','.') if e.laborers_auto else '—' }}"></div>
+      </div>
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:8px;border-top:1px solid var(--border-soft);padding-top:12px;">{{ tr('Fiksni troškovi (alokacija)') }}</div>
+      <div class="form-row">
+        <div class="form-group"><label style="font-size:.78rem;">{{ tr('Fiksni profit (negativan = trošak)') }}
+          <span style="font-size:.7rem;color:var(--ink-muted);font-weight:400;"> {{ tr('— kirija, knji., struja itd. ÷ broju događaja') }}</span></label>
+          <input type="number" step="0.01" name="fixed_profit"
+                 value="{{ e.fixed_profit or '' }}" placeholder="0.00"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manual revenues -->
+  <div class="card mb-3">
+    <div class="card-header"><span class="card-title">{{ tr('Manuelni prihodi') }}</span></div>
+    <div class="card-body">
+      <div class="form-row">
+        <div class="form-group"><label>{{ tr("Najam lokala (net)") }}</label>
+          <input type="number" step="0.01" name="venue_rent" value="{{ e.venue_rent or '' }}" placeholder="0.00"></div>
+        <div class="form-group"><label>{{ tr("Sopstvene karte (net)") }}</label>
+          <input type="number" step="0.01" name="ticket_sales_own" value="{{ e.ticket_sales_own or '' }}" placeholder="0.00"></div>
+        <div class="form-group"><label>{{ tr('Ostali prihodi (net)') }}</label>
+          <input type="number" step="0.01" name="other_revenues" value="{{ e.other_revenues or '' }}" placeholder="0.00"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manual expenses -->
+  <div class="card mb-3">
+    <div class="card-header"><span class="card-title">{{ tr('Manuelni rashodi') }}</span></div>
+    <div class="card-body">
+      <div class="form-row">
+        <div class="form-group"><label>{{ tr('Muzičari / izvođači (net)') }}</label>
+          <input type="number" step="0.01" name="musicians_fee" value="{{ e.musicians_fee or '' }}" placeholder="0.00"></div>
+        <div class="form-group"><label>{{ tr("Oprema / tehnika (net)") }}</label>
+          <input type="number" step="0.01" name="equipment_expenses" value="{{ e.equipment_expenses or '' }}" placeholder="0.00"></div>
+        <div class="form-group"><label>{{ tr("Marketing (net)") }}</label>
+          <input type="number" step="0.01" name="advertising" value="{{ e.advertising or '' }}" placeholder="0.00"></div>
+        <div class="form-group"><label>{{ tr("Kartica varijabilno (net)") }}</label>
+          <input type="number" step="0.01" name="debit_card_expenses_variable" value="{{ e.debit_card_expenses_variable or '' }}" placeholder="0.00"></div>
+        <div class="form-group"><label>{{ tr('Ostali rashodi (net)') }}</label>
+          <input type="number" step="0.01" name="other_expenses" value="{{ e.other_expenses or '' }}" placeholder="0.00"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header"><span class="card-title">{{ tr('Napomena') }}</span></div>
+    <div class="card-body">
+      <textarea name="additional_details" rows="2">{{ e.additional_details or '' }}</textarea>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;justify-content:flex-end;margin-bottom:30px;">
+    <a href="{{ url_for('daily_log.index') }}" class="btn btn-secondary">{{ tr('Otkaži') }}</a>
+    <button type="submit" class="btn btn-primary">{{ tr('Sačuvaj izmene') }}</button>
+  </div>
+
+  </form>
+</div>
+{% endfor %}
+
+<script>
+function showTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p=>p.style.display='none');
+  document.querySelectorAll('.tab-btn').forEach(b=>{b.style.color='var(--ink-muted)';b.style.borderBottomColor='transparent';});
+  document.getElementById(id).style.display='block';
+  const btn=document.getElementById('btn-'+id);
+  if(btn){btn.style.color='var(--accent)';btn.style.borderBottomColor='var(--accent)';}
+}
+document.addEventListener('DOMContentLoaded',()=>{const f=document.querySelector('.tab-btn');if(f)f.click();});
+</script>
+{% endblock %}

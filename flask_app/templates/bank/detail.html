@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Transakcija') }} #{{ row.transaction_id }}{% endblock %}
+
+{% macro field(label, value) %}
+<tr>
+  <td style="width:180px;color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">{{ label }}</td>
+  <td style="padding:8px 14px;font-weight:500;">{{ value if value else '—' }}</td>
+</tr>
+{% endmacro %}
+
+{% block content %}
+{% set is_credit = row.direction == 'credit' %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ row.counterparty or 'Transakcija #' ~ row.transaction_id }}</h1>
+    <p class="page-subtitle">
+      {{ row.date }} &nbsp;·&nbsp;
+      {{ account_labels.get(row.account, row.account) }} &nbsp;·&nbsp;
+      {% if is_credit %}
+        <span class="badge badge-green">{{ tr('Prihod') }}</span>
+      {% else %}
+        <span class="badge badge-red">{{ tr('Rashod') }}</span>
+      {% endif %}
+      {% if row.allocated %}
+        &nbsp;<span class="badge badge-blue">{{ tr('Alocirano') }}</span>
+      {% else %}
+        &nbsp;<span class="badge badge-gray">{{ tr('Nealocirano') }}</span>
+      {% endif %}
+    </p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('bank.index') }}" class="btn btn-secondary btn-sm">{{ tr('← Nazad') }}</a>
+  </div>
+</div>
+
+<div class="section-grid">
+  <div style="display:flex;flex-direction:column;gap:16px;">
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">{{ tr("Podaci transakcije") }}</span></div>
+      <table class="data-table">
+        <tbody>
+          {{ field(tr('Datum'), row.date) }}
+          {{ field(tr('Račun'), account_labels.get(row.account, row.account)) }}
+          {{ field(tr('Broj izvoda'), row.statement_number) }}
+          {{ field(tr('Kontrastrana'), row.counterparty) }}
+          {{ field(tr('Svrha plaćanja'), row.purpose) }}
+          {{ field(tr('Poziv na broj (ulazni)'), row.reference_in) }}
+          {% if row.payment_period %}{{ field(tr('Period plaćanja'), row.payment_period) }}{% endif %}
+          {{ field(tr('Poziv na broj (izlazni)'), row.reference_out) }}
+          {{ field("FIT ID", row.fitid) }}
+          {{ field(tr('Izvor'), row.source) }}
+          {{ field(tr('Entitet'), row.entity) }}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:16px;">
+
+    <div class="card" style="border-top:3px solid {{ 'var(--green)' if is_credit else 'var(--red)' }};">
+      <div class="card-header"><span class="card-title">{{ tr('Iznos') }}</span></div>
+      <div class="card-body">
+        <div style="font-family:var(--font-serif);font-size:2rem;color:{{ 'var(--green)' if is_credit else 'var(--red)' }};">
+          {% if is_credit %}+{% else %}−{% endif %}{{ "{:,.0f}".format(row.amount).replace(",",".") }}
+          <span style="font-family:var(--font-sans);font-size:1rem;color:var(--ink-muted);">RSD</span>
+        </div>
+        <p style="font-size:.82rem;color:var(--ink-muted);margin-top:4px;">
+          {{ tr('Prihod (credit)') if is_credit else tr('Rashod (debit)') }}
+        </p>
+      </div>
+    </div>
+
+    <!-- Tagging form -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">{{ tr("Alokacija i tag") }}</span></div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('bank.tag_transaction', transaction_id=row.transaction_id) }}">
+          <div class="form-group">
+            <label>Tag</label>
+            {% set current_tag = row.manual_tag or row.auto_tag or '' %}
+            <select name="manual_tag" id="tag-select">
+              <option value="">{{ tr('— bez taga —') }}</option>
+              {% if fixed_tags %}
+                <optgroup label="Troškovi">
+                  {% for t in fixed_tags if t.type == 'expense' %}
+                    <option value="{{ t.name }}" {{ 'selected' if t.name == current_tag }}>{{ t.name }}</option>
+                  {% endfor %}
+                </optgroup>
+                <optgroup label="Prihodi">
+                  {% for t in fixed_tags if t.type == 'income' %}
+                    <option value="{{ t.name }}" {{ 'selected' if t.name == current_tag }}>{{ t.name }}</option>
+                  {% endfor %}
+                </optgroup>
+              {% endif %}
+            </select>
+            <p class="text-muted mt-1" style="font-size:.75rem;">
+              <a href="{{ url_for('fixed_costs.tags') }}">{{ tr("Upravljaj tagovima →") }}</a>
+            </p>
+          </div>
+          <div class="form-group">
+            <label>{{ tr('Napomena') }}</label>
+            <textarea name="notes" rows="2" placeholder="{{ tr('Slobodan tekst...') }}">{{ row.notes or '' }}</textarea>
+          </div>
+          <div class="form-group" style="display:flex;align-items:center;gap:10px;">
+            <input type="checkbox" name="allocated" value="1" id="alloc-cb"
+                   {{ 'checked' if row.allocated }}>
+            <label for="alloc-cb" style="margin:0;cursor:pointer;">{{ tr('Označi kao alocirano') }}</label>
+          </div>
+          <div style="text-align:right;margin-top:12px;">
+            <button type="submit" class="btn btn-primary btn-sm">{{ tr('Sačuvaj') }}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% block scripts %}
+<script>
+function handleTagSelect(sel) {
+  const newInput = document.getElementById('tag-new-input');
+  newInput.style.display = sel.value === '__new__' ? 'block' : 'none';
+  if (sel.value !== '__new__') newInput.value = '';
+}
+
+// Before submit, copy new tag value into the right field
+document.querySelector('form[method="post"]').addEventListener('submit', function() {
+  const sel = document.getElementById('tag-select');
+  const newInput = document.getElementById('tag-new-input');
+  if (sel.value === '__new__' && newInput.value.trim()) {
+    sel.name = '';
+    newInput.name = 'manual_tag';
+  } else if (sel.value === '__new__') {
+    sel.value = '';
+  }
+});
+</script>
+{% endblock %}
+
+    <!-- Fixed cost assignment -->
+    <div class="card" style="margin-top:16px;">
+      <div class="card-header"><span class="card-title">{{ tr('Dodeli fiksnom trošku/prihodu') }}</span></div>
+      <div class="card-body">
+        {% if existing_links %}
+        <div style="margin-bottom:14px;">
+          {% for l in existing_links %}
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-soft);">
+            <span>
+              <span class="badge {{ 'badge-red' if l.tag_type == 'expense' else 'badge-green' }}">{{ l.tag_name }}</span>
+              &nbsp;{{ l.year }}-{{ '%02d'|format(l.month) }}
+              &nbsp;<span class="text-muted" style="font-size:.8rem;">{{ "{:,.0f}".format(l.amount).replace(",",".") }} RSD</span>
+            </span>
+            <form method="post" action="{{ url_for('fixed_costs.delete_link', link_id=l.link_id) }}" style="display:inline;">
+              <button class="btn btn-ghost btn-sm" data-confirm="Ukloniti vezu?">✕</button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if fixed_tags %}
+        <form method="post" action="{{ url_for('bank.assign_fixed_cost', transaction_id=row.transaction_id) }}">
+          <div class="form-row">
+            <div class="form-group">
+              <label>{{ tr('Kategorija') }}</label>
+              <select name="tag_id" required>
+                <optgroup label="Troškovi">
+                  {% for t in fixed_tags if t.type == 'expense' %}
+                    <option value="{{ t.tag_id }}">{{ t.name }}</option>
+                  {% endfor %}
+                </optgroup>
+                <optgroup label="Prihodi">
+                  {% for t in fixed_tags if t.type == 'income' %}
+                    <option value="{{ t.tag_id }}">{{ t.name }}</option>
+                  {% endfor %}
+                </optgroup>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>{{ tr('Godina') }}</label>
+              <select name="year">
+                {% for y in range(today_year-1, today_year+2) %}
+                  <option value="{{ y }}" {{ 'selected' if y == today_year }}>{{ y }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>{{ tr('Mesec') }}</label>
+              <select name="month">
+                {% for i in range(1,13) %}
+                  <option value="{{ i }}" {{ 'selected' if i == today_month }}>
+                    {{ month_short(i) }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>{{ tr('Iznos (RSD)') }}</label>
+              <input type="number" step="0.01" name="amount"
+                     value="{{ row.amount|int }}" placeholder="0.00">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>{{ tr('Napomena') }}</label>
+            <input type="text" name="notes" placeholder="{{ tr('Opciono') }}">
+          </div>
+          <div style="text-align:right;margin-top:8px;">
+            <button type="submit" class="btn btn-primary btn-sm">{{ tr('Dodeli') }}</button>
+          </div>
+        </form>
+        {% else %}
+        <p class="text-muted" style="font-size:.84rem;">
+          {{ tr('Nema tagova.') }} <a href="{{ url_for('fixed_costs.tags') }}">{{ tr('Dodaj tagove →') }}</a>
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+{% endblock %}

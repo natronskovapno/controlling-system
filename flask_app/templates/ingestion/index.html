@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Uvoz podataka') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != '' and val|float != 0 -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+
+<script>
+  var _pt = null;
+  function _log(msg, running, rc){
+    var el=document.getElementById('log_sef');
+    el.style.display='block'; el.textContent=msg;
+    el.scrollTop=el.scrollHeight;
+    var btn=document.getElementById('btn_sef');
+    if(!running){
+      btn.disabled=false; btn.textContent='▶ Pokreni SEF uvoz';
+      if(rc===0) el.style.borderLeft='3px solid #4caf50';
+      else if(rc!==null) el.style.borderLeft='3px solid #f44336';
+    }
+  }
+  function _tail(text,n){
+    var lines=text.split('\n');
+    return lines.length>n?lines.slice(-n).join('\n'):text;
+  }
+  function _poll(id){
+    fetch('/ingestion/status/'+id).then(r=>r.json()).then(d=>{
+      _log(_tail(d.output||'',120),d.running,d.running?null:d.returncode);
+      if(d.running) _pt=setTimeout(()=>_poll(id),1200);
+    }).catch(e=>_log('Greška: '+e,false,-1));
+  }
+  function runSef(){
+    if(_pt){clearTimeout(_pt);_pt=null;}
+    var btn=document.getElementById('btn_sef');
+    btn.disabled=true; btn.textContent='⏳ Pokrenuto...';
+    var el=document.getElementById('log_sef');
+    el.style.borderLeft=''; el.textContent='Pokretanje...'; el.style.display='block';
+    fetch('/ingestion/run',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:'step=sef'}).then(r=>r.json()).then(d=>{
+        if(d.job_id) _poll(d.job_id);
+        else _log('Greška: '+(d.error||'nepoznata'),false,-1);
+      }).catch(e=>_log('Greška: '+e,false,-1));
+  }
+</script>
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Uvoz podataka') }}</h1>
+    <p class="page-subtitle">{{ tr('Statusni pregled izvora i poslednjeg uvoza') }}</p>
+  </div>
+</div>
+
+{% if gaps %}
+<div style="margin-bottom:16px;">
+  {% for g in gaps %}
+  <div class="alert alert-{{ g.severity }}" style="margin-bottom:6px;">⚠ {{ g.source }}: {{ g.description }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+{% if open_count %}
+<div class="alert alert-warning" style="margin-bottom:16px;">
+  {{ open_count }} {{ tr('otvorena greška/e —') }} <a href="#errors">{{ tr('pogledaj dole') }}</a>
+</div>
+{% endif %}
+
+{# ── Source status cards ──────────────────────────────────────────── #}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:24px;">
+  {% for s in sources %}
+  <div class="card" style="padding:14px 16px;">
+    <div style="font-weight:600;font-size:.85rem;margin-bottom:6px;">{{ s.name }}</div>
+    <div style="font-size:.78rem;color:var(--muted);">{{ tr('Tabela:') }} <code>{{ s.table }}</code></div>
+    <div style="margin-top:8px;font-size:.82rem;">
+      <span style="font-weight:600;">{{ s.rows or 0 }}</span> {{ tr("redova") }}
+      {% if s.last_date %} · do <strong>{{ s.last_date }}</strong>{% endif %}
+    </div>
+    {% if s.last_ingest %}
+    <div style="font-size:.72rem;color:var(--muted);margin-top:4px;">{{ tr('Uvezeno:') }} {{ s.last_ingest }}</div>
+    {% endif %}
+    {% if s.can_run %}
+    <form method="POST" action="/ingestion/run" style="margin-top:10px;">
+      <input type="hidden" name="step" value="{{ s.step }}">
+      <button type="submit" class="btn btn-secondary btn-sm" {% if job_running %}disabled{% endif %}>{{ tr('▶ Pokreni') }}</button>
+    </form>
+    {% elif s.needs_prompt %}
+    <div style="font-size:.72rem;color:var(--muted);margin-top:10px;font-style:italic;">{{ tr('Ručni uvoz (fajl)') }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{# ── SEF run + POS run + SEF run po datumu — 3 per row ─────────── #}
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px;">
+
+  <div class="card" style="padding:16px;">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
+      <strong style="font-size:.88rem;">{{ tr('SEF eFaktura uvoz') }}</strong>
+      <button id="btn_sef" class="btn btn-primary btn-sm"
+        onclick="runSef()" {% if job_running %}disabled{% endif %}>{{ tr('▶ Pokreni SEF uvoz') }}</button>
+    </div>
+    <div style="font-size:.72rem;color:var(--muted);">{{ tr('Puna istorija (2021 → danas)') }}</div>
+    <div id="log_sef" style="display:none;margin-top:10px;padding:8px 10px;
+         background:#1a1a2e;color:#e2e8f0;font-family:monospace;font-size:.72rem;
+         border-radius:var(--r-sm);max-height:320px;overflow-y:auto;white-space:pre-wrap;"></div>
+  </div>
+
+  <div class="card" style="padding:16px;">
+    <strong style="font-size:.88rem;">{{ tr('POS uvoz po datumu') }}</strong>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+      <label style="font-size:.82rem;">{{ tr('Od') }}</label>
+      <input type="date" id="pos_from" value="{{ pos_from }}" max="{{ yesterday }}"
+             style="font-size:.82rem;padding:4px 8px;">
+      <label style="font-size:.82rem;">{{ tr('Do') }}</label>
+      <input type="date" id="pos_to" value="{{ pos_to }}" max="{{ yesterday }}"
+             style="font-size:.82rem;padding:4px 8px;">
+      <button id="btn_pos_range" class="btn btn-secondary btn-sm"
+              onclick="runPOSRange()" {% if job_running %}disabled{% endif %}>{{ tr('▶ Pokreni') }}</button>
+    </div>
+    <div id="log_pos_range" style="display:none;margin-top:10px;padding:8px 10px;
+         background:#1a1a2e;color:#e2e8f0;font-family:monospace;font-size:.72rem;
+         border-radius:var(--r-sm);max-height:320px;overflow-y:auto;white-space:pre-wrap;"></div>
+  </div>
+
+  <div class="card" style="padding:16px;">
+    <strong style="font-size:.88rem;">{{ tr('SEF uvoz po datumu') }}</strong>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+      <label style="font-size:.82rem;">{{ tr('Od') }}</label>
+      <input type="date" id="sef_from" value="{{ sef_from }}" max="{{ today }}"
+             style="font-size:.82rem;padding:4px 8px;">
+      <label style="font-size:.82rem;">{{ tr('Do') }}</label>
+      <input type="date" id="sef_to" value="{{ sef_to }}" max="{{ today }}"
+             style="font-size:.82rem;padding:4px 8px;">
+      <button id="btn_sef_range" class="btn btn-secondary btn-sm"
+              onclick="runSefRange()" {% if job_running %}disabled{% endif %}>{{ tr('▶ Pokreni') }}</button>
+    </div>
+    <div id="log_sef_range" style="display:none;margin-top:10px;padding:8px 10px;
+         background:#1a1a2e;color:#e2e8f0;font-family:monospace;font-size:.72rem;
+         border-radius:var(--r-sm);max-height:320px;overflow-y:auto;white-space:pre-wrap;"></div>
+  </div>
+
+<script>
+(function(){
+  var _pt2=null;
+  function _log2(msg,run,rc){
+    var el=document.getElementById('log_pos_range');
+    el.style.display='block'; el.textContent=msg;
+    var btn=document.getElementById('btn_pos_range');
+    btn.disabled=run;
+    btn.textContent=run?'⏳ Pokrenuto...':'▶ Pokreni';
+    if(!run&&rc===0) el.style.borderLeft='3px solid #4caf50';
+    else if(!run&&rc!==null) el.style.borderLeft='3px solid #f44336';
+    else el.style.borderLeft='';
+  }
+  function _poll2(id){
+    fetch('/ingestion/status/'+id).then(r=>r.json()).then(d=>{
+      var lines=d.output?d.output.split('\n'):[];
+      var tail=lines.length>120?lines.slice(-120).join('\n'):d.output||'';
+      _log2(tail,d.running,d.running?null:d.returncode);
+      if(d.running) _pt2=setTimeout(()=>_poll2(id),1200);
+    }).catch(e=>_log2('Greška: '+e,false,-1));
+  }
+  window.runPOSRange=function(){
+    if(_pt2){clearTimeout(_pt2);_pt2=null;}
+    var df=document.getElementById('pos_from').value;
+    var dt=document.getElementById('pos_to').value;
+    if(!df||!dt){alert('Unesite oba datuma.');return;}
+    _log2('Pokretanje...',true,null);
+    var body='step=pos_range&date_from='+encodeURIComponent(df)+'&date_to='+encodeURIComponent(dt);
+    fetch('/ingestion/run',{method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body})
+      .then(r=>r.json()).then(d=>{
+        if(d.job_id) _poll2(d.job_id);
+        else _log2('Greška: '+(d.error||'nepoznata'),false,-1);
+      }).catch(e=>_log2('Greška: '+e,false,-1));
+  };
+})();
+
+(function(){
+  var _pt3=null;
+  function _log3(msg,run,rc){
+    var el=document.getElementById('log_sef_range');
+    el.style.display='block'; el.textContent=msg;
+    var btn=document.getElementById('btn_sef_range');
+    btn.disabled=run;
+    btn.textContent=run?'⏳ Pokrenuto...':'▶ Pokreni';
+    if(!run&&rc===0) el.style.borderLeft='3px solid #4caf50';
+    else if(!run&&rc!==null) el.style.borderLeft='3px solid #f44336';
+    else el.style.borderLeft='';
+  }
+  function _poll3(id){
+    fetch('/ingestion/status/'+id).then(r=>r.json()).then(d=>{
+      var lines=d.output?d.output.split('\n'):[];
+      var tail=lines.length>120?lines.slice(-120).join('\n'):d.output||'';
+      _log3(tail,d.running,d.running?null:d.returncode);
+      if(d.running) _pt3=setTimeout(()=>_poll3(id),1200);
+    }).catch(e=>_log3('Greška: '+e,false,-1));
+  }
+  window.runSefRange=function(){
+    if(_pt3){clearTimeout(_pt3);_pt3=null;}
+    var df=document.getElementById('sef_from').value;
+    var dt=document.getElementById('sef_to').value;
+    if(!df||!dt){alert('Unesite oba datuma.');return;}
+    _log3('Pokretanje...',true,null);
+    var body='step=sef_range&date_from='+encodeURIComponent(df)+'&date_to='+encodeURIComponent(dt);
+    fetch('/ingestion/run',{method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body})
+      .then(r=>r.json()).then(d=>{
+        if(d.job_id) _poll3(d.job_id);
+        else _log3('Greška: '+(d.error||'nepoznata'),false,-1);
+      }).catch(e=>_log3('Greška: '+e,false,-1));
+  };
+})();
+</script>
+
+</div>
+
+{# ── Log tables — 2 per row ───────────────────────────────────────── #}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+
+  {% if pos_log %}
+  <div class="card" style="padding:16px;">
+    <h3 style="margin:0 0 10px;font-size:.88rem;">{{ tr("POS — istorija uvoza") }}</h3>
+    <table class="data-table" style="font-size:.76rem;">
+      <thead><tr>
+        <th>{{ tr('Datum uvoza') }}</th><th>{{ tr("Billovi") }}</th><th>{{ tr("Aktivni") }}</th><th>{{ tr('Od') }}</th><th>{{ tr('Do') }}</th>
+      </tr></thead>
+      <tbody>
+      {% for r in pos_log %}
+      <tr>
+        <td>{{ r.run_date }}</td>
+        <td style="text-align:right;">{{ r.bills_count }}</td>
+        <td style="text-align:right;">{{ r.bills_active }}</td>
+        <td>{{ r.date_min }}</td>
+        <td>{{ r.date_max }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if sef_log %}
+  <div class="card" style="padding:16px;">
+    <h3 style="margin:0 0 10px;font-size:.88rem;">{{ tr("SEF — istorija uvoza") }}</h3>
+    <table class="data-table" style="font-size:.76rem;">
+      <thead><tr>
+        <th>{{ tr('Datum uvoza') }}</th><th>{{ tr('Fakture (ulazne)') }}</th><th>{{ tr('Od') }}</th><th>{{ tr('Do') }}</th>
+      </tr></thead>
+      <tbody>
+      {% for r in sef_log %}
+      <tr>
+        <td>{{ r.run_date }}</td>
+        <td style="text-align:right;">{{ r.invoices_in_count }}</td>
+        <td>{{ r.date_min }}</td>
+        <td>{{ r.date_max }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if bank_log %}
+  <div class="card" style="padding:16px;">
+    <h3 style="margin:0 0 10px;font-size:.88rem;">{{ tr("Demo Bank — istorija uvoza") }}</h3>
+    <table class="data-table" style="font-size:.76rem;">
+      <thead><tr>
+        <th>{{ tr('Datum uvoza') }}</th><th>Tx</th>
+        <th style="text-align:right;">{{ tr('Ulaz') }}</th>
+        <th style="text-align:right;">{{ tr('Izlaz') }}</th>
+        <th>{{ tr('Od') }}</th><th>{{ tr('Do') }}</th>
+      </tr></thead>
+      <tbody>
+      {% for r in bank_log %}
+      <tr>
+        <td>{{ r.run_date }}</td>
+        <td style="text-align:right;">{{ r.tx_count }}</td>
+        <td style="text-align:right;">{{ money(r.total_in) }}</td>
+        <td style="text-align:right;">{{ money(r.total_out) }}</td>
+        <td>{{ r.date_min }}</td>
+        <td>{{ r.date_max }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if second_bank_log %}
+  <div class="card" style="padding:16px;">
+    <h3 style="margin:0 0 10px;font-size:.88rem;">{{ tr("Second Bank (Small Brewery) — istorija uvoza") }}</h3>
+    <table class="data-table" style="font-size:.76rem;">
+      <thead><tr>
+        <th>{{ tr('Datum uvoza') }}</th><th>Tx</th>
+        <th style="text-align:right;">{{ tr('Ulaz') }}</th>
+        <th style="text-align:right;">{{ tr('Izlaz') }}</th>
+        <th>{{ tr('Od') }}</th><th>{{ tr('Do') }}</th>
+      </tr></thead>
+      <tbody>
+      {% for r in second_bank_log %}
+      <tr>
+        <td>{{ r.run_date }}</td>
+        <td style="text-align:right;">{{ r.tx_count }}</td>
+        <td style="text-align:right;">{{ money(r.total_in) }}</td>
+        <td style="text-align:right;">{{ money(r.total_out) }}</td>
+        <td>{{ r.date_min }}</td>
+        <td>{{ r.date_max }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+</div>
+
+{# ── Errors ───────────────────────────────────────────────────────── #}
+<div class="card" style="padding:16px;margin-bottom:24px;" id="errors">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <h3 style="margin:0;font-size:.88rem;">
+      {{ tr('Greške uvoza') }}
+      {% if open_count %}<span class="badge badge-warning">{{ open_count }} {{ tr("otvoreno") }}</span>{% endif %}
+    </h3>
+    <button class="btn btn-secondary btn-sm"
+      onclick="document.getElementById('add_error_form').style.display='block';this.style.display='none';">
+      {{ tr('+ Dodaj grešku') }}
+    </button>
+  </div>
+  <div id="add_error_form" style="display:none;background:var(--surface-alt);padding:12px;border-radius:var(--r-sm);margin-bottom:12px;">
+    <form method="POST" action="/ingestion/errors/add">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <div>
+          <label style="font-size:.78rem;">{{ tr('Izvor') }}</label>
+          <input type="text" name="source" class="form-control" placeholder="{{ tr('npr. SEF, POS') }}">
+        </div>
+        <div>
+          <label style="font-size:.78rem;">{{ tr('Datum') }}</label>
+          <input type="date" name="date_detected" value="{{ today }}" class="form-control">
+        </div>
+      </div>
+      <div style="margin-bottom:8px;">
+        <label style="font-size:.78rem;">{{ tr('Opis') }}</label>
+        <input type="text" name="description" class="form-control" placeholder="{{ tr('Kratki opis greške') }}">
+      </div>
+      <div style="margin-bottom:8px;">
+        <label style="font-size:.78rem;">{{ tr('Napomena (opciono)') }}</label>
+        <input type="text" name="notes" class="form-control">
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">{{ tr('Sačuvaj') }}</button>
+    </form>
+  </div>
+  {% if errors %}
+  <table class="data-table" style="font-size:.78rem;">
+    <thead><tr>
+      <th>{{ tr('Datum') }}</th><th>{{ tr('Izvor') }}</th><th>{{ tr('Opis') }}</th><th>{{ tr('Status') }}</th><th>{{ tr("Akcija") }}</th>
+    </tr></thead>
+    <tbody>
+    {% for e in errors %}
+    <tr style="{% if e.status == 'open' %}background:rgba(255,193,7,.08);{% endif %}">
+      <td>{{ e.date_detected }}</td>
+      <td>{{ e.source }}</td>
+      <td>{{ e.description }}{% if e.notes %}<br><span style="color:var(--muted);font-size:.7rem;">{{ e.notes }}</span>{% endif %}</td>
+      <td>
+        {% if e.status == 'open' %}<span class="badge badge-warning">{{ tr("otvoreno") }}</span>
+        {% else %}<span class="badge badge-success">{{ tr('rešeno') }} {{ e.resolved_at[:10] if e.resolved_at }}</span>{% endif %}
+      </td>
+      <td>
+        {% if e.status == 'open' %}
+        <form method="POST" action="/ingestion/errors/{{ e.id }}/resolve" style="display:inline;">
+          <button type="submit" class="btn btn-secondary btn-sm">{{ tr('✓ Reši') }}</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:var(--muted);font-size:.82rem;margin:0;">{{ tr('Nema zabeleženih grešaka.') }}</p>
+  {% endif %}
+</div>
+
+{# ── CLI reference ────────────────────────────────────────────────── #}
+<details style="margin-bottom:24px;">
+  <summary style="cursor:pointer;font-size:.82rem;color:var(--muted);">{{ tr("CLI komande") }}</summary>
+  <div class="card" style="padding:12px;margin-top:8px;">
+    {% for key, cmd in commands.items() %}
+    <div style="margin-bottom:6px;">
+      <code style="font-size:.72rem;display:block;padding:4px 8px;background:var(--surface-alt);border-radius:4px;">{{ cmd }}</code>
+    </div>
+    {% endfor %}
+  </div>
+</details>
+
+{% endblock %}

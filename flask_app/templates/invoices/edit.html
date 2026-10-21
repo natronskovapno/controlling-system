@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Izmeni fakturu') }} — {{ row.supplier_name or row.client_name }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Izmeni belu fakturu') }}</h1>
+    <p class="page-subtitle">
+      {{ row.invoice_number_ext or (tr('Faktura #') ~ row.invoice_id) }}
+      &nbsp;·&nbsp;
+      {% if direction == 'in' %}{{ row.supplier_name or '—' }}{% else %}{{ row.client_name or '—' }}{% endif %}
+    </p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('invoices.detail', direction=direction, invoice_id=row.invoice_id) }}"
+       class="btn btn-secondary btn-sm">{{ tr('← Nazad') }}</a>
+  </div>
+</div>
+
+<div class="card" style="max-width:640px;">
+  <div class="card-body" style="padding:24px;">
+    <form method="post">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+        <div class="form-group" style="margin:0;">
+          <label>{% if direction == 'in' %}{{ tr('Dobavljač') }}{% else %}{{ tr('Klijent') }}{% endif %} *</label>
+          <input type="text" name="counterparty" required
+                 value="{{ row.supplier_name if direction == 'in' else row.client_name }}">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>{{ tr("PIB") }}</label>
+          <input type="text" name="counterparty_pib"
+                 value="{{ row.supplier_pib if direction == 'in' else row.client_pib }}">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>{{ tr('Broj fakture (ext)') }}</label>
+        <input type="text" name="invoice_number_ext" value="{{ row.invoice_number_ext or '' }}">
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr {% if direction == 'in' %}1fr{% endif %};gap:16px;margin-bottom:16px;">
+        <div class="form-group" style="margin:0;">
+          <label>{{ tr('Datum izdavanja *') }}</label>
+          <input type="date" name="date_issued" required value="{{ row.date_issued or '' }}">
+        </div>
+        {% if direction == 'in' %}
+        <div class="form-group" style="margin:0;">
+          <label>{{ tr('Datum prijema') }}</label>
+          <input type="date" name="date_received" value="{{ row.date_received or '' }}">
+        </div>
+        {% endif %}
+        <div class="form-group" style="margin:0;">
+          <label>{{ tr('Rok plaćanja') }}</label>
+          <input type="date" name="due_date" value="{{ row.due_date or '' }}">
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px;">
+        <div class="form-group" style="margin:0;">
+          <label>{{ tr('Neto iznos (RSD) *') }}</label>
+          <input type="number" step="0.01" name="net_amount" required
+                 value="{{ row.net_amount or '' }}"
+                 oninput="recalcPdv()">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>{{ tr('PDV stopa (%)') }}</label>
+          <select name="pdv_rate" onchange="recalcPdv()">
+            {% for r in [0, 10, 20] %}
+            <option value="{{ r }}" {{ 'selected' if (row.pdv_rate or 0)|int == r }}>{{ r }}%</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>{{ tr('PDV iznos (RSD)') }}</label>
+          <input type="text" id="pdv-preview" readonly
+                 style="background:var(--canvas-warm);color:var(--ink-muted);"
+                 value="{{ (row.pdv_amount or 0)|int }}">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>{{ tr('Napomena') }}</label>
+        <input type="text" name="notes" value="{{ row.notes or '' }}" placeholder="{{ tr('Opciono') }}">
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+        <a href="{{ url_for('invoices.detail', direction=direction, invoice_id=row.invoice_id) }}"
+           class="btn btn-ghost btn-sm">{{ tr('Odustani') }}</a>
+        <button type="submit" class="btn btn-primary btn-sm">{{ tr('Sačuvaj izmene') }}</button>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+<script>
+function recalcPdv() {
+  var net = parseFloat(document.querySelector('[name=net_amount]').value) || 0;
+  var rate = parseFloat(document.querySelector('[name=pdv_rate]').value) || 0;
+  var pdv = Math.round(net * rate / 100);
+  document.getElementById('pdv-preview').value = pdv;
+}
+recalcPdv();
+</script>
+
+{% endblock %}

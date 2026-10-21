@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Predlog plaćanja') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != '' and val|float != 0 -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}0{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Predlog plaćanja') }}</h1>
+    <p class="page-subtitle">{{ tr('Izaberite dobavljače i fakture koje planirate da platite — Garden Stage') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <button type="button" id="expand-all-btn" class="btn btn-secondary btn-sm">{{ tr('Otvori sve') }}</button>
+    <button type="button" id="collapse-all-btn" class="btn btn-secondary btn-sm">{{ tr('Zatvori sve') }}</button>
+    <a href="{{ url_for('cash.index') }}" class="btn btn-secondary btn-sm">{{ tr('← Cash Position') }}</a>
+  </div>
+</div>
+
+{# ── Sum tile ── #}
+<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px;">
+  <div class="kpi-card kpi-card--red">
+    <div class="kpi-card__label">{{ tr('Ukupno neizmireno') }}</div>
+    <div class="kpi-card__value text-negative" style="font-size:1.5rem;">
+      {{ money(grand_remaining) }}<span class="kpi-card__unit">RSD</span>
+    </div>
+    <div class="kpi-card__sub">{{ tr('sve otvorene fakture (Garden Stage)') }}</div>
+  </div>
+
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Predloženo za plaćanje') }}</div>
+    <div class="kpi-card__value" id="proposed-sum" style="font-size:1.5rem;" data-value="{{ grand_proposed|float }}">
+      {{ money(grand_proposed) }}<span class="kpi-card__unit">RSD</span>
+    </div>
+    <div class="kpi-card__sub" id="proposed-count">{{ grand_count }} {{ tr('izabranih stavki') }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-card__label">{{ tr('Ostaje neizmireno') }}</div>
+    <div class="kpi-card__value" id="remainder-sum" style="font-size:1.5rem;">
+      {{ money(grand_remaining - grand_proposed) }}<span class="kpi-card__unit">RSD</span>
+    </div>
+    <div class="kpi-card__sub">{{ tr('ukupno minus predloženo') }}</div>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('cash.payment_proposal_save') }}" id="proposal-form">
+
+  {% if suppliers %}
+  {% for s in suppliers %}
+  <div class="card proposal-supplier-card" style="margin-bottom:16px;">
+    <div class="card-header proposal-card-toggle" style="cursor:pointer;user-select:none;">
+      <span class="card-title">
+        <span class="proposal-chevron" style="display:inline-block;transition:transform .15s;margin-right:6px;">▸</span>
+        {{ s.supplier_name }}
+      </span>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="badge badge-gray">
+          {{ s.invoices|length }} {{ tr("fakt. · preostalo") }} {{ money(s.remaining_total) }} RSD
+        </span>
+        <span class="badge badge-amber supplier-header-proposed" data-supplier="{{ s.supplier_name }}">
+          {{ tr('predloženo') }} {{ money(s.proposed_total) }} RSD
+        </span>
+      </div>
+    </div>
+    <div class="table-wrap proposal-card-body" style="display:none;">
+      <table class="data-table" style="font-size:.86rem;">
+        <thead>
+          <tr>
+            <th style="width:34px;"></th>
+            <th>{{ tr('Faktura') }}</th>
+            <th>{{ tr('Rok plaćanja') }}</th>
+            <th class="text-right">{{ tr('Status') }}</th>
+            <th class="text-right">{{ tr('Preostalo') }}</th>
+            <th class="text-right" style="width:160px;">{{ tr('Predloženi iznos') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inv in s.invoices %}
+          <tr>
+            <td>
+              <input type="checkbox" class="proposal-check" data-invoice="{{ inv.invoice_id }}"
+                     {% if inv.proposed_amount and inv.proposed_amount > 0 %}checked{% endif %}>
+            </td>
+            <td>{{ inv.invoice_number_sef or ('#' ~ inv.invoice_id) }}</td>
+            <td style="color:var(--ink-muted);">
+              {{ inv.due_date or inv.date_issued or '—' }}
+            </td>
+            <td class="text-right">
+              <span class="badge {% if inv.payment_status == 'Partial' %}badge-amber{% else %}badge-gray{% endif %}">
+                {{ inv.payment_status }}
+              </span>
+            </td>
+            <td class="num" style="font-weight:600;color:var(--red);">
+              {{ money(inv.remaining) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+            </td>
+            <td class="text-right">
+              <input type="hidden" name="invoice_id" value="{{ inv.invoice_id }}"
+                     class="invoice-id-field" data-active="{{ 'true' if inv.proposed_amount and inv.proposed_amount > 0 else 'false' }}">
+              <input type="text" inputmode="decimal"
+                     name="amount_{{ inv.invoice_id }}"
+                     class="proposal-amount"
+                     data-invoice="{{ inv.invoice_id }}"
+                     data-remaining="{{ inv.remaining }}"
+                     value="{{ '%.0f' % inv.proposed_amount if inv.proposed_amount and inv.proposed_amount > 0 else '' }}"
+                     placeholder="0"
+                     style="width:130px;text-align:right;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:.85rem;">
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr style="background:var(--canvas-warm);">
+            <td colspan="4" style="padding:8px 14px;font-weight:600;">{{ tr('Predloženo za') }} {{ s.supplier_name }}</td>
+            <td class="num" style="padding:8px 14px;font-weight:700;color:var(--red);">{{ money(s.remaining_total) }} RSD</td>
+            <td class="num supplier-proposed-total" data-supplier="{{ s.supplier_name }}" style="padding:8px 14px;font-weight:700;">
+              {{ money(s.proposed_total) }} RSD
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+
+  <div style="display:flex;justify-content:flex-end;margin-top:20px;">
+    <span class="text-muted" style="font-size:.78rem;">{{ tr('PDF prikazuje poslednje sačuvan predlog — sačuvajte izmene pre preuzimanja.') }}</span>
+  </div>
+  <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">
+    <a href="{{ url_for('cash.payment_proposal_pdf') }}" target="_blank" class="btn btn-secondary">
+      {{ tr('Preuzmi PDF') }}
+    </a>
+    <button type="submit" name="action" value="clear" class="btn btn-secondary"
+            formaction="{{ url_for('cash.payment_proposal_clear') }}">
+      {{ tr('Obriši predlog') }}
+    </button>
+    <button type="submit" class="btn btn-primary">
+      {{ tr('Sačuvaj predlog') }}
+    </button>
+  </div>
+
+  {% else %}
+  <div class="empty-state">
+    <p>{{ tr('Nema neizmirenih obaveza za Garden Stage. ✓') }}</p>
+  </div>
+  {% endif %}
+
+</form>
+
+<script>
+(function () {
+  function parseNum(v) {
+    v = (v || "").toString().trim().replace(/\./g, "").replace(",", ".");
+    var n = parseFloat(v);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function fmt(n) {
+    return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  }
+
+  function recalc() {
+    var total = 0;
+    var count = 0;
+
+    document.querySelectorAll(".proposal-amount").forEach(function (input) {
+      var cb = document.querySelector('.proposal-check[data-invoice="' + input.dataset.invoice + '"]');
+      if (!cb || !cb.checked) return;
+      var val = parseNum(input.value);
+      if (val > 0) {
+        total += val;
+        count += 1;
+      }
+    });
+
+    // Per-supplier subtotals — update both the footer total and the
+    // collapsed-view header badge so the overview is accurate without
+    // needing to expand the card.
+    document.querySelectorAll(".proposal-supplier-card").forEach(function (card) {
+      var supplierTotal = 0;
+      card.querySelectorAll(".proposal-amount").forEach(function (input) {
+        var cb = document.querySelector('.proposal-check[data-invoice="' + input.dataset.invoice + '"]');
+        if (cb && cb.checked) supplierTotal += parseNum(input.value);
+      });
+      var footerCell = card.querySelector(".supplier-proposed-total");
+      if (footerCell) footerCell.textContent = fmt(supplierTotal) + " RSD";
+      var headerBadge = card.querySelector(".supplier-header-proposed");
+      if (headerBadge) headerBadge.textContent = "predloženo " + fmt(supplierTotal) + " RSD";
+    });
+
+    document.getElementById("proposed-sum").innerHTML =
+      fmt(total) + '<span class="kpi-card__unit">RSD</span>';
+    document.getElementById("proposed-count").textContent = count + " izabranih stavki";
+
+    var remaining = {{ grand_remaining|float }};
+    document.getElementById("remainder-sum").innerHTML =
+      fmt(remaining - total) + '<span class="kpi-card__unit">RSD</span>';
+  }
+
+  // ── Collapse / expand ──────────────────────────────────────────────
+  function setExpanded(card, expanded) {
+    var body = card.querySelector(".proposal-card-body");
+    var chevron = card.querySelector(".proposal-chevron");
+    body.style.display = expanded ? "" : "none";
+    if (chevron) chevron.style.transform = expanded ? "rotate(90deg)" : "rotate(0deg)";
+  }
+
+  document.querySelectorAll(".proposal-card-toggle").forEach(function (header) {
+    header.addEventListener("click", function () {
+      var card = header.closest(".proposal-supplier-card");
+      var body = card.querySelector(".proposal-card-body");
+      var isExpanded = body.style.display !== "none";
+      setExpanded(card, !isExpanded);
+    });
+  });
+
+  var expandAllBtn = document.getElementById("expand-all-btn");
+  if (expandAllBtn) {
+    expandAllBtn.addEventListener("click", function () {
+      document.querySelectorAll(".proposal-supplier-card").forEach(function (card) {
+        setExpanded(card, true);
+      });
+    });
+  }
+
+  var collapseAllBtn = document.getElementById("collapse-all-btn");
+  if (collapseAllBtn) {
+    collapseAllBtn.addEventListener("click", function () {
+      document.querySelectorAll(".proposal-supplier-card").forEach(function (card) {
+        setExpanded(card, false);
+      });
+    });
+  }
+
+  document.querySelectorAll(".proposal-check").forEach(function (cb) {
+    cb.addEventListener("change", function () {
+      var invId = cb.dataset.invoice;
+      var amountInput = document.querySelector('.proposal-amount[data-invoice="' + invId + '"]');
+      if (cb.checked) {
+        if (!amountInput.value) {
+          amountInput.value = Math.round(parseFloat(amountInput.dataset.remaining));
+        }
+      } else {
+        amountInput.value = "";
+      }
+      recalc();
+    });
+  });
+
+  document.querySelectorAll(".proposal-amount").forEach(function (input) {
+    input.addEventListener("input", function () {
+      var cb = document.querySelector('.proposal-check[data-invoice="' + input.dataset.invoice + '"]');
+      if (cb) cb.checked = parseNum(input.value) > 0;
+      recalc();
+    });
+  });
+
+  // On submit, only send invoice_id fields whose checkbox is checked.
+  // Typing into an amount field auto-checks its row, so an unchecked row
+  // always means an empty/zero amount — but we additionally strip its
+  // invoice_id hidden field here so it isn't sent at all, regardless.
+  document.getElementById("proposal-form").addEventListener("submit", function () {
+    document.querySelectorAll(".invoice-id-field").forEach(function (hidden) {
+      var invId = hidden.value;
+      var cb = document.querySelector('.proposal-check[data-invoice="' + invId + '"]');
+      if (!cb || !cb.checked) {
+        hidden.disabled = true;
+      }
+    });
+  });
+
+  recalc();
+})();
+</script>
+
+{% endblock %}

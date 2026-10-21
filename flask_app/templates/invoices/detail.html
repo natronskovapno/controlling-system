@@ -1,0 +1,785 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Faktura —') }} {{ row.supplier_name or row.client_name }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != '' and val|float != 0 -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }} RSD
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% macro field(label, value, red=false) %}
+<div>
+  <div style="font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:3px;">{{ label }}</div>
+  <div style="font-size:.9rem;font-weight:500;{% if red %}color:var(--red);{% endif %}">{{ value if value else '—' }}</div>
+</div>
+{% endmacro %}
+
+{% block content %}
+
+{% set gross    = (row.net_amount or 0) + (row.pdv_amount or 0) %}
+{% set paid     = row.amount_paid or 0 %}
+{% set remaining = gross - paid %}
+{% set is_overdue = row.due_date and row.due_date < today and row.payment_status != 'Paid' %}
+
+{# ══════════════════════════════════════════════════════════════════
+   HEADER
+══════════════════════════════════════════════════════════════════ #}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title" style="font-size:1.4rem;">
+      {% if direction == 'in' %}{{ row.supplier_name or '—' }}
+      {% else %}{{ row.client_name or '—' }}{% endif %}
+    </h1>
+    <p class="page-subtitle" style="font-size:.82rem;">
+      {{ row.invoice_number_sef or row.invoice_number_ext or (tr('Faktura #') ~ row.invoice_id) }}
+      {% if row.invoice_status %}
+        &nbsp;·&nbsp;
+        {% set ist = row.invoice_status %}
+        {% if ist == 'Approved' %}<span class="badge badge-green">{{ tr('Prihvaćeno') }}</span>
+        {% elif ist == 'New' %}<span class="badge badge-blue">{{ tr('Primljeno') }}</span>
+        {% elif ist == 'Seen' %}<span class="badge badge-amber">{{ tr('Pregledano') }}</span>
+        {% elif ist == 'Rejected' %}<span class="badge badge-red">{{ tr('Odbijeno') }}</span>
+        {% elif ist == 'Storno' %}<span class="badge badge-gray">{{ tr('Stornirano') }}</span>
+        {% elif ist == 'Sent' %}<span class="badge badge-blue">{{ tr('Poslato') }}</span>
+        {% else %}<span class="badge badge-gray">{{ ist }}</span>{% endif %}
+      {% endif %}
+    </p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('invoices.index', direction=direction) }}" class="btn btn-secondary btn-sm">{{ tr('← Nazad') }}</a>
+    {% if row.source == 'manual' %}
+    <a href="{{ url_for('invoices.edit', direction=direction, invoice_id=row.invoice_id) }}" class="btn btn-secondary btn-sm">{{ tr('✎ Izmeni') }}</a>
+    <form method="post" action="{{ url_for('invoices.delete', direction=direction, invoice_id=row.invoice_id) }}" style="display:inline;">
+      <button class="btn btn-danger btn-sm" onclick="return confirm('Obrisati ovu belu fakturu?')">{{ tr('Obriši') }}</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════
+   TOP SECTION — Invoice info + Amounts (read-only summary)
+══════════════════════════════════════════════════════════════════ #}
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-body" style="padding:20px 24px;">
+
+    {# Row 1: Key identifiers #}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:20px;margin-bottom:20px;">
+      {% if direction == 'in' %}
+        {{ field(tr('Dobavljač'), row.supplier_name) }}
+        {{ field(tr('PIB'), row.supplier_pib) }}
+      {% else %}
+        {{ field(tr('Klijent'), row.client_name) }}
+        {{ field(tr('PIB'), row.client_pib) }}
+      {% endif %}
+      {{ field(tr('Broj fakture (SEF)'), row.invoice_number_sef) }}
+      {{ field(tr('Broj fakture (ext)'), row.invoice_number_ext) }}
+      {{ field("Tip dokumenta", row.document_type) }}
+      <div>
+        <div style="font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:3px;">{{ tr('Entitet') }}</div>
+        <div style="font-size:.9rem;font-weight:500;display:flex;align-items:center;gap:8px;">
+          {{ row.entity or '—' }}
+          {% if row.entity == 'brewery' %}
+          <form method="post" action="{{ url_for('invoices.unassign_brewery', direction=direction, invoice_id=row.invoice_id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-ghost btn-sm" style="font-size:.7rem;padding:2px 8px;color:var(--ink-muted);border:1px dashed var(--border);"
+                    onclick="return confirm('Vratiti ovu fakturu na Garden Stage?')" title="{{ tr('Poništi dodelu the Brewery') }}">
+              {{ tr('↺ Vrati na Garden Stage') }}
+            </button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border-soft);margin-bottom:20px;"></div>
+
+    {# Row 2: Dates #}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:20px;margin-bottom:20px;">
+      {{ field(tr('Datum izdavanja'), row.date_issued) }}
+      {% if direction == 'in' %}
+        {{ field(tr('Datum prijema'), row.date_received) }}
+      {% endif %}
+      <div>
+        <div style="font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:3px;">{{ tr('Rok plaćanja') }}</div>
+        <div style="font-size:.9rem;font-weight:500;{% if is_overdue %}color:var(--red);{% endif %}">
+          {{ row.due_date or '—' }}
+          {% if is_overdue %}<span style="font-size:.75rem;"> {{ tr('⚠ dospelo') }}</span>{% endif %}
+        </div>
+      </div>
+      {{ field(tr('Datum plaćanja'), row.payment_date) }}
+      {{ field(tr('Valuta'), row.currency or 'RSD') }}
+      {{ field(tr('Izvor'), row.source) }}
+    </div>
+
+    <div style="border-top:1px solid var(--border-soft);margin-bottom:20px;"></div>
+
+    {# Row 3: Amounts — prominent #}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;align-items:end;">
+
+      <div style="background:var(--surface);border-radius:var(--r-md);padding:14px 16px;">
+        <div style="font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:4px;">{{ tr('Neto') }}</div>
+        <div style="font-size:1.15rem;font-weight:600;">{{ money(row.net_amount) }}</div>
+        <div style="font-size:.72rem;color:var(--ink-muted);">{{ tr('PDV') }} {{ row.pdv_rate or 0 }}% = {{ money(row.pdv_amount) }}</div>
+      </div>
+
+      <div style="background:var(--surface);border-radius:var(--r-md);padding:14px 16px;border:2px solid var(--border-soft);">
+        <div style="font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:4px;">{{ tr('Bruto (sa PDV)') }}</div>
+        <div style="font-size:1.3rem;font-weight:700;">{{ money(gross) }}</div>
+      </div>
+
+      <div style="background:var(--surface);border-radius:var(--r-md);padding:14px 16px;">
+        <div style="font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:4px;">{{ tr('Plaćeno') }}</div>
+        <div style="font-size:1.15rem;font-weight:600;color:{% if paid > 0 %}var(--green){% else %}var(--ink-muted){% endif %};">
+          {{ money(paid) if paid > 0 else '—' }}
+        </div>
+      </div>
+
+      <div style="background:{% if row.payment_status == 'Paid' %}#f0fff4{% elif row.payment_status == 'Partial' %}#fffbf0{% else %}#fff5f5{% endif %};
+                  border-radius:var(--r-md);padding:14px 16px;
+                  border:2px solid {% if row.payment_status == 'Paid' %}var(--green){% elif row.payment_status == 'Partial' %}var(--accent){% else %}var(--red){% endif %};">
+        <div style="font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:4px;">{{ tr('Za platiti') }}</div>
+        <div style="font-size:1.3rem;font-weight:700;color:{% if row.payment_status == 'Paid' %}var(--green){% elif row.payment_status == 'Partial' %}var(--accent){% else %}var(--red){% endif %};">
+          {% if row.payment_status == 'Paid' %}{{ tr('✓ Plaćeno') }}
+          {% else %}{{ money(remaining) }}{% endif %}
+        </div>
+        <div style="margin-top:4px;">
+          {% if row.payment_status == 'Paid' %}
+            <span class="badge badge-green">{{ tr('Plaćeno') }}</span>
+          {% elif row.payment_status == 'Partial' %}
+            <span class="badge badge-amber">{{ tr('Parcijalno') }}</span>
+          {% else %}
+            <span class="badge badge-red">{{ tr('Neplaćeno') }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+
+    {# Notes if present #}
+    {% if row.notes %}
+    <div style="margin-top:16px;padding:10px 14px;background:var(--canvas-warm);border-radius:var(--r-sm);font-size:.85rem;color:var(--ink-muted);">
+      <span style="font-weight:600;color:var(--ink);">{{ tr('Napomena:') }}</span> {{ row.notes }}
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+{# Line items #}
+{% if items %}
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-header">
+    <span class="card-title">{{ tr('Stavke fakture') }}</span>
+    <span class="badge badge-gray">{{ items|length }}</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table" style="font-size:.82rem;">
+      <thead>
+        <tr>
+          <th>#</th><th>{{ tr('Opis') }}</th><th>{{ tr('Jed.') }}</th>
+          <th class="text-right">{{ tr('Kol.') }}</th><th class="text-right">{{ tr('Cena') }}</th>
+          <th class="text-right">{{ tr('Neto') }}</th><th class="text-right">{{ tr('PDV %') }}</th>
+          <th class="text-right">{{ tr('Bruto') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td class="text-muted">{{ item.order_no or loop.index }}</td>
+          <td>{{ item.description or '—' }}</td>
+          <td class="text-muted">{{ item.unit or '—' }}</td>
+          <td class="num">{{ "{:,.2f}".format(item.quantity|float).replace(",",".") if item.quantity else '—' }}</td>
+          <td class="num">{{ "{:,.2f}".format(item.unit_price|float).replace(",",".") if item.unit_price else '—' }}</td>
+          <td class="num">{{ "{:,.2f}".format(item.net_amount|float).replace(",",".") if item.net_amount else '—' }}</td>
+          <td class="num text-muted">{{ item.vat_rate or '—' }}{% if item.vat_rate %}%{% endif %}</td>
+          <td class="num" style="font-weight:500;">{{ "{:,.2f}".format(item.gross_amount|float).replace(",",".") if item.gross_amount else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# Compute auto-period for JS (must be at block scope, not inside card) #}
+{% if direction == 'in' and row.date_received %}
+  {% set auto_date = row.date_received %}
+{% else %}
+  {% set auto_date = row.date_issued or '' %}
+{% endif %}
+{% set auto_year  = auto_date[:4]|int if auto_date else today_year %}
+{% set auto_month = auto_date[5:7]|int if auto_date and auto_date|length >= 7 else today_month %}
+
+{# ══════════════════════════════════════════════════════════════════
+   DIVIDER
+══════════════════════════════════════════════════════════════════ #}
+<div style="display:flex;align-items:center;gap:12px;margin:8px 0 28px;">
+  <div style="flex:1;height:1px;background:var(--border-soft);"></div>
+  <span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-muted);white-space:nowrap;">{{ tr('Ručne akcije') }}</span>
+  <div style="flex:1;height:1px;background:var(--border-soft);"></div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════
+   MANUAL SECTION — two-column grid
+══════════════════════════════════════════════════════════════════ #}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+
+  {# LEFT: Payment log + add payment #}
+  <div style="display:flex;flex-direction:column;gap:16px;">
+
+    {# Payment log #}
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">{{ tr('Evidencija uplata') }}</span>
+        {% if payment_log %}
+        <span class="badge badge-gray">{{ payment_log|length }}</span>
+        {% endif %}
+      </div>
+      <div class="card-body" style="padding:0;">
+
+        {% if payment_log %}
+        <table class="data-table" style="font-size:.82rem;">
+          <thead>
+            <tr>
+              <th>{{ tr('Datum') }}</th>
+              <th class="text-right">{{ tr('Iznos') }}</th>
+              <th>{{ tr('Napomena') }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for log in payment_log %}
+            <tr>
+              <td style="white-space:nowrap;">{{ log.payment_date }}</td>
+              <td class="num" style="font-weight:600;color:var(--green);">{{ money(log.amount) }}</td>
+              <td style="color:var(--ink-muted);font-size:.78rem;">{{ log.notes or '—' }}</td>
+              <td>
+                <form method="post"
+                      action="{{ url_for('invoices.delete_payment', direction=direction, invoice_id=row.invoice_id, log_id=log.log_id) }}"
+                      style="display:inline;">
+                  <button class="btn btn-ghost btn-sm" style="color:var(--red);padding:2px 6px;"
+                          onclick="return confirm('Ukloniti ovu uplatu?')" title="{{ tr('Ukloni') }}">✕</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr style="background:var(--canvas-warm);">
+              <td style="font-weight:600;padding:8px 14px;">{{ tr('Ukupno plaćeno') }}</td>
+              <td class="num" style="font-weight:700;padding:8px 14px;color:var(--green);">{{ money(paid) }}</td>
+              <td colspan="2"></td>
+            </tr>
+            {% if row.payment_status != 'Paid' %}
+            <tr>
+              <td style="color:var(--ink-muted);font-size:.8rem;padding:6px 14px;">{{ tr('Preostalo') }}</td>
+              <td class="num" style="font-weight:700;padding:6px 14px;color:var(--red);">{{ money(remaining) }}</td>
+              <td colspan="2"></td>
+            </tr>
+            {% endif %}
+          </tfoot>
+        </table>
+        {% else %}
+        <div style="padding:16px;color:var(--ink-muted);font-size:.84rem;">{{ tr('Nema zabeleženih uplata.') }}</div>
+        {% endif %}
+
+      </div>
+
+      {# Add payment form #}
+      <div style="padding:14px 16px;border-top:1px solid var(--border-soft);background:var(--canvas-warm);">
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:10px;">{{ tr('+ Dodaj uplatu') }}</div>
+        <form method="post" action="{{ url_for('invoices.add_payment', direction=direction, invoice_id=row.invoice_id) }}">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+            <div class="form-group" style="margin:0;">
+              <label style="font-size:.75rem;">{{ tr('Datum uplate') }}</label>
+              <input type="date" name="payment_date" value="{{ today }}" required
+                     style="padding:6px 8px;font-size:.82rem;">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label style="font-size:.75rem;">{{ tr('Iznos (RSD)') }}</label>
+              <input type="number" step="0.01" name="amount"
+                     value="{{ remaining|int if remaining > 0 else '' }}"
+                     placeholder="{{ money(remaining) if remaining > 0 else '0' }}"
+                     required style="padding:6px 8px;font-size:.82rem;">
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label style="font-size:.75rem;">{{ tr('Napomena (opciono)') }}</label>
+            <input type="text" name="notes" placeholder="{{ tr('npr. doznaka, ček...') }}"
+                   style="padding:6px 8px;font-size:.82rem;">
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm" style="width:100%;">{{ tr('Zabeležiti uplatu') }}</button>
+        </form>
+      </div>
+    </div>
+
+    {# Quick status override (for when no log is needed) #}
+    <div class="card">
+      <div class="card-header"><span class="card-title">{{ tr('Brzi status override') }}</span></div>
+      <div class="card-body">
+        <p style="font-size:.78rem;color:var(--ink-muted);margin-bottom:12px;">
+          {{ tr('Postavi status bez logovanja uplata. Korisno za SEF fakture koje su plaćene van sistema.') }}
+        </p>
+        <form method="post" action="{{ url_for('invoices.set_payment', direction=direction, invoice_id=row.invoice_id) }}">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+            <div class="form-group" style="margin:0;">
+              <label style="font-size:.75rem;">{{ tr('Status') }}</label>
+              <select name="payment_status" id="quick-status"
+                      onchange="toggleQuickAmount(this.value)"
+                      style="padding:6px 8px;font-size:.82rem;">
+                <option value="Unpaid"  {{ 'selected' if row.payment_status == 'Unpaid' }}>{{ tr('Neplaćeno') }}</option>
+                <option value="Partial" {{ 'selected' if row.payment_status == 'Partial' }}>{{ tr('Parcijalno') }}</option>
+                <option value="Paid"    {{ 'selected' if row.payment_status == 'Paid' }}>{{ tr('Plaćeno') }}</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin:0;" id="quick-amount-group"
+                 style="{{ 'display:none' if row.payment_status not in ['Partial'] else '' }}">
+              <label style="font-size:.75rem;">{{ tr('Iznos plaćen (RSD)') }}</label>
+              <input type="number" step="0.01" name="amount_paid"
+                     value="{{ row.amount_paid or '' }}"
+                     placeholder="{{ gross|int }}"
+                     style="padding:6px 8px;font-size:.82rem;">
+            </div>
+          </div>
+          <button type="submit" class="btn btn-secondary btn-sm" style="width:100%;">{{ tr('Primeni status') }}</button>
+        </form>
+      </div>
+    </div>
+
+  </div>{# /left #}
+
+  {# RIGHT: Fixed cost assignment + existing links #}
+  <div style="display:flex;flex-direction:column;gap:16px;">
+
+    {# Existing links #}
+    {% if existing_links %}
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">{{ tr('Dodeljeno fiksnim troškovima') }}</span>
+        <span class="badge badge-gray">{{ existing_links|length }}</span>
+      </div>
+      <div class="card-body" style="padding:12px 16px;">
+        {% for l in existing_links %}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-soft);">
+          <span>
+            <span class="badge {{ 'badge-red' if l.tag_type == 'expense' else 'badge-green' }}">{{ l.tag_name }}</span>
+            &nbsp;<span class="text-muted" style="font-size:.8rem;">{{ l.year }}-{{ '%02d'|format(l.month) }}</span>
+            &nbsp;<span style="font-size:.82rem;font-weight:500;">{{ money(l.amount) }}</span>
+          </span>
+          <form method="post" action="{{ url_for('fixed_costs.delete_link', link_id=l.link_id) }}" style="display:inline;">
+            <button class="btn btn-ghost btn-sm" style="color:var(--red);padding:2px 6px;"
+                    onclick="return confirm('Ukloniti vezu?')">✕</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Assign to fixed cost #}
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">{{ tr('Dodeli fiksnom trošku/prihodu') }}</span>
+        {% if fixed_tags %}
+        <button type="button" id="toggle-advanced-btn"
+                onclick="toggleAdvanced()"
+                class="btn btn-ghost btn-sm"
+                style="font-size:.72rem;color:var(--ink-muted);">
+          {{ tr('⋯ Napredna alokacija') }}
+        </button>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        {% if fixed_tags %}
+
+        {# ── QUICK MODE ─────────────────────────────────────────── #}
+        <div id="alloc-quick">
+          <p style="font-size:.75rem;color:var(--ink-muted);margin-bottom:12px;">
+            {{ tr('Period se automatski određuje iz datuma') }}
+            {% if direction == 'in' %}{{ tr("prijema (") }}<strong>{{ row.date_received or tr('nije unet') }}</strong>)
+            {% else %}{{ tr("izdavanja (") }}<strong>{{ row.date_issued or tr('nije unet') }}</strong>){% endif %}.
+            {{ tr('Klikni ⋯ za raspodelu na više perioda.') }}
+          </p>
+          <form method="post" action="{{ url_for('invoices.assign_fixed_cost', direction=direction, invoice_id=row.invoice_id) }}">
+            <div class="form-group">
+              <label style="font-size:.75rem;">{{ tr('Kategorija') }}</label>
+              <select name="tag_id" required style="padding:6px 8px;font-size:.82rem;">
+                <optgroup label="Troškovi">
+                  {% for t in fixed_tags if t.type == 'expense' %}
+                    <option value="{{ t.tag_id }}">{{ t.name }}</option>
+                  {% endfor %}
+                </optgroup>
+                <optgroup label="Prihodi">
+                  {% for t in fixed_tags if t.type == 'income' %}
+                    <option value="{{ t.tag_id }}">{{ t.name }}</option>
+                  {% endfor %}
+                </optgroup>
+              </select>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+              <div class="form-group" style="margin:0;">
+                <label style="font-size:.75rem;">{{ tr('Godina') }}</label>
+                <select name="year" style="padding:6px 8px;font-size:.82rem;">
+                  {% for y in range(2021, today_year+2) %}
+                    <option value="{{ y }}" {{ 'selected' if y == auto_year }}>{{ y }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label style="font-size:.75rem;">{{ tr('Mesec') }}</label>
+                <select name="month" style="padding:6px 8px;font-size:.82rem;">
+                  {% for i in range(1,13) %}
+                    <option value="{{ i }}" {{ 'selected' if i == auto_month }}>
+                      {{ month_short(i) }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label style="font-size:.75rem;">{{ tr('Iznos neto (RSD)') }}</label>
+                <input type="number" step="0.01" name="amount"
+                value="{{ row.net_amount|int }}"
+                style="padding:6px 8px;font-size:.82rem;">
+              </div>
+            </div>
+            <div class="form-group" style="margin-top:8px;">
+              <label style="font-size:.75rem;">{{ tr('Napomena') }}</label>
+              <input type="text" name="notes" placeholder="{{ tr('Opciono') }}"
+                     style="padding:6px 8px;font-size:.82rem;">
+            </div>
+            <div style="text-align:right;margin-top:8px;">
+              <button type="submit" class="btn btn-primary btn-sm">{{ tr('Dodeli') }}</button>
+            </div>
+          </form>
+        </div>
+
+        {# ── ADVANCED MODE ──────────────────────────────────────── #}
+        <div id="alloc-advanced" style="display:none;">
+
+          {# Running total bar #}
+          <div style="background:var(--canvas-warm);border-radius:var(--r-sm);
+                      padding:8px 12px;margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:.8rem;margin-bottom:6px;">
+              <span style="color:var(--ink-muted);">{{ tr('Neto fakture:') }}</span>
+              <strong>{{ row.net_amount|int }} RSD</strong>
+              <span style="color:var(--ink-muted);">{{ tr('→ Rasporedeno (neto):') }}</span>
+              <strong id="adv-allocated">0 RSD</strong>
+              <span style="color:var(--ink-muted);">{{ tr('Preostalo:') }}</span>
+              <strong id="adv-remaining" style="color:var(--red);">{{ row.net_amount|int }} RSD</strong>
+            </div>
+            <div style="font-size:.72rem;color:var(--ink-muted);display:flex;justify-content:space-between;align-items:center;">
+              <span>{{ tr('Bruto fakture (sa PDV):') }} <strong>{{ gross|int }} RSD</strong></span>
+              <button type="button" onclick="advResetToAuto()"
+                      style="padding:2px 8px;font-size:.72rem;background:none;
+                             border:1px solid var(--border);border-radius:var(--r-sm);
+                             cursor:pointer;color:var(--ink-muted);">
+                {{ tr('↺ Jednaka raspodela') }}
+              </button>
+            </div>
+          </div>
+
+          {# Rows container #}
+          <div id="adv-rows"></div>
+
+          {# Add row / Load line items buttons #}
+          <div style="display:flex;gap:6px;margin-bottom:12px;">
+            <button type="button" onclick="advAddRow()"
+                    class="btn btn-ghost btn-sm"
+                    style="flex:1;border:1px dashed var(--border);font-size:.78rem;">
+              {{ tr('+ Dodaj period') }}
+            </button>
+            {% if items %}
+            <button type="button" onclick="advLoadLineItems()"
+                    class="btn btn-ghost btn-sm"
+                    style="flex:1;border:1px dashed var(--accent);color:var(--accent);font-size:.78rem;"
+                    title="{{ tr('Učitaj stavke iz fakture kao posebne redove') }}">
+              {{ tr('&#8595; Učitaj stavke fakture (') }}{{ items|length }})
+            </button>
+            {% endif %}
+          </div>
+
+          {# Submit all rows #}
+          <form method="post" id="adv-form"
+                action="{{ url_for('invoices.assign_fixed_cost_multi', direction=direction, invoice_id=row.invoice_id) }}">
+            <div id="adv-hidden-fields"></div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;">
+              <button type="button" onclick="toggleAdvanced()" class="btn btn-ghost btn-sm">{{ tr('Odustani') }}</button>
+              <button type="button" onclick="advSubmit()" class="btn btn-primary btn-sm">{{ tr('Dodeli sve') }}</button>
+            </div>
+          </form>
+        </div>
+
+        {% else %}
+        <p class="text-muted" style="font-size:.84rem;">
+          {{ tr('Nema tagova.') }} <a href="{{ url_for('fixed_costs.tags') }}">{{ tr('Dodaj tagove →') }}</a>
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>{# /right #}
+
+</div>{# /manual grid #}
+
+<script>
+const NET_TOTAL  = {{ row.net_amount|float }};  // neto (bez PDV) — koristimo za alokaciju
+const GROSS_TOTAL = {{ gross }};  // bruto (sa PDV) — samo za prikaz
+const FIXED_TAGS = [
+  {% for t in fixed_tags %}
+  { id: {{ t.tag_id }}, name: {{ t.name|tojson }}, type: {{ t.type|tojson }} },
+  {% endfor %}
+];
+const LINE_ITEMS = [
+  {% for it in items %}
+  { description: {{ it.description|tojson if it.description else '""' }}, net_amount: {{ it.net_amount|float if it.net_amount else 0 }}, vat_rate: {{ it.vat_rate|float if it.vat_rate else 0 }} },
+  {% endfor %}
+];
+const MONTHS = {{ month_shorts()|tojson }};
+const DEFAULT_YEAR  = {{ auto_year }};
+const DEFAULT_MONTH = {{ auto_month }};
+
+let advRowCount = 0;
+let advManualAmounts = false;  // false = auto-equal distribution, true = manual
+
+function fmt(n) {
+  return Math.round(n).toLocaleString('sr-RS');
+}
+
+function toggleAdvanced() {
+  const quick = document.getElementById('alloc-quick');
+  const adv   = document.getElementById('alloc-advanced');
+  const btn   = document.getElementById('toggle-advanced-btn');
+  const showing = adv.style.display !== 'none';
+  quick.style.display = showing ? 'block' : 'none';
+  adv.style.display   = showing ? 'none'  : 'block';
+  btn.style.color     = showing ? 'var(--ink-muted)' : 'var(--accent)';
+  btn.textContent     = showing ? '\u22ef Napredna alokacija' : '\u00d7 Zatvori naprednu';
+  if (!showing && advRowCount === 0) advAddRow();  // seed first row
+}
+
+function tagOptions(selected) {
+  let html = '<option value="">-- kategorija --</option>';
+  const expenses = FIXED_TAGS.filter(t => t.type === 'expense');
+  const incomes  = FIXED_TAGS.filter(t => t.type === 'income');
+  if (expenses.length) {
+    html += '<optgroup label="Tro\u0161kovi">';
+    expenses.forEach(t => html += `<option value="${t.id}"${t.id==selected?' selected':''}>${t.name}</option>`);
+    html += '</optgroup>';
+  }
+  if (incomes.length) {
+    html += '<optgroup label="Prihodi">';
+    incomes.forEach(t => html += `<option value="${t.id}"${t.id==selected?' selected':''}>${t.name}</option>`);
+    html += '</optgroup>';
+  }
+  return html;
+}
+
+function yearOptions(selected) {
+  let html = '';
+  for (let y = 2021; y <= DEFAULT_YEAR + 1; y++)
+    html += `<option value="${y}"${y==selected?' selected':''}>${y}</option>`;
+  return html;
+}
+
+function monthOptions(selected) {
+  return MONTHS.map((m,i) =>
+    `<option value="${i+1}"${(i+1)==selected?' selected':''}>${m}</option>`
+  ).join('');
+}
+
+// Returns all live row divs
+function advGetRows() {
+  return Array.from(document.querySelectorAll('#adv-rows > div[data-row-id]'));
+}
+
+// Get net amount allocated so far (sum of all amount inputs)
+function advGetAllocated() {
+  let total = 0;
+  advGetRows().forEach(row => {
+    const inp = row.querySelector('[data-field=amount]');
+    if (inp) total += parseFloat(inp.value) || 0;
+  });
+  return total;
+}
+
+// Redistribute NET_TOTAL equally across all rows (auto mode)
+function advRebalance() {
+  const rows = advGetRows();
+  if (!rows.length) return;
+  const each = Math.floor(NET_TOTAL / rows.length);
+  const remainder = Math.round(NET_TOTAL - each * rows.length);
+  rows.forEach((row, i) => {
+    const inp = row.querySelector('[data-field=amount]');
+    if (inp) inp.value = each + (i === rows.length - 1 ? remainder : 0);
+  });
+  advRecalc();
+}
+
+function advAddRow(tagId='', year=DEFAULT_YEAR, month=DEFAULT_MONTH, amount='', notes='') {
+  advRowCount++;
+  const id = advRowCount;
+  const isFirst = id === 1;
+
+  const html = `
+  <div id="adv-row-${id}" data-row-id="${id}" style="
+    display:grid;
+    grid-template-columns:2fr 80px 80px 110px 1fr 28px;
+    gap:6px;align-items:end;
+    padding:8px 0;
+    border-bottom:1px solid var(--border-soft);">
+
+    <div>
+      ${isFirst ? '<label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:3px;">Kategorija</label>' : ''}
+      <select data-field="tag" onchange="advRecalc()" style="padding:5px 6px;font-size:.78rem;width:100%;">
+        ${tagOptions(tagId)}
+      </select>
+    </div>
+
+    <div>
+      ${isFirst ? '<label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:3px;">Godina</label>' : ''}
+      <select data-field="year" style="padding:5px 6px;font-size:.78rem;width:100%;">
+        ${yearOptions(year)}
+      </select>
+    </div>
+
+    <div>
+      ${isFirst ? '<label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:3px;">Mesec</label>' : ''}
+      <select data-field="month" style="padding:5px 6px;font-size:.78rem;width:100%;">
+        ${monthOptions(month)}
+      </select>
+    </div>
+
+    <div>
+      ${isFirst ? '<label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:3px;">Neto iznos (RSD)</label>' : ''}
+      <input type="number" step="1" data-field="amount"
+             oninput="advManualAmounts=true;advRecalc()"
+             style="padding:5px 6px;font-size:.78rem;width:100%;">
+    </div>
+
+    <div>
+      ${isFirst ? '<label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:3px;">Napomena</label>' : ''}
+      <input type="text" data-field="notes" value="${notes}" placeholder="Opciono"
+             style="padding:5px 6px;font-size:.78rem;width:100%;">
+    </div>
+
+    <div style="padding-bottom:2px;">
+      <button type="button"
+              onclick="advRemoveRow(${id})"
+              style="padding:4px 7px;background:none;border:1px solid var(--border);
+                     border-radius:var(--r-sm);cursor:pointer;color:var(--red);
+                     font-size:.8rem;line-height:1;">✕</button>
+    </div>
+  </div>`;
+
+  document.getElementById('adv-rows').insertAdjacentHTML('beforeend', html);
+
+  // In auto mode, redistribute equally; in manual mode, fill remaining
+  if (!advManualAmounts) {
+    advRebalance();
+  } else {
+    const rem = Math.max(0, NET_TOTAL - (advGetAllocated() - 0));  // after insert
+    const newInp = document.getElementById('adv-row-' + id).querySelector('[data-field=amount]');
+    if (newInp) newInp.value = Math.round(rem);
+    advRecalc();
+  }
+}
+
+function advRemoveRow(id) {
+  const el = document.getElementById('adv-row-' + id);
+  if (el) el.remove();
+  if (!advManualAmounts) advRebalance();
+  else advRecalc();
+}
+
+function advLoadLineItems() {
+  if (!LINE_ITEMS.length) { alert('Ova faktura nema stavki u bazi.'); return; }
+  // Clear existing rows
+  document.getElementById('adv-rows').innerHTML = '';
+  advRowCount = 0;
+  advManualAmounts = false;  // keep auto so advAddRow doesn't override amounts
+  // Add one row per line item (notes pre-filled)
+  LINE_ITEMS.forEach(item => {
+    advAddRow('', DEFAULT_YEAR, DEFAULT_MONTH, '', item.description || '');
+  });
+  // Now set each row's amount directly from line item net_amount
+  const rows = advGetRows();
+  rows.forEach((row, i) => {
+    const inp = row.querySelector('[data-field=amount]');
+    if (inp && LINE_ITEMS[i]) inp.value = Math.round(LINE_ITEMS[i].net_amount);
+  });
+  advManualAmounts = true;
+  advRecalc();
+}
+
+function advRecalc() {
+  const allocated = advGetAllocated();
+  const remaining = NET_TOTAL - allocated;
+  document.getElementById('adv-allocated').textContent = fmt(allocated) + ' RSD';
+  const remEl = document.getElementById('adv-remaining');
+  remEl.textContent = fmt(Math.abs(remaining)) + (remaining < 0 ? ' RSD (prekora\u010deno!)' : ' RSD');
+  remEl.style.color = remaining < -0.5 ? 'var(--red)' : remaining > 0.5 ? 'var(--accent)' : 'var(--green)';
+}
+
+function advResetToAuto() {
+  advManualAmounts = false;
+  advRebalance();
+}
+
+function advSubmit() {
+  const rows = advGetRows();
+  if (!rows.length) { alert('Dodajte bar jedan period.'); return; }
+
+  const entries = [];
+  let valid = true;
+  rows.forEach(row => {
+    const tagSel   = row.querySelector('[data-field=tag]');
+    const yearSel  = row.querySelector('[data-field=year]');
+    const monthSel = row.querySelector('[data-field=month]');
+    const amtInp   = row.querySelector('[data-field=amount]');
+    const notesInp = row.querySelector('[data-field=notes]');
+
+    if (!tagSel || !tagSel.value) {
+      valid = false;
+      if (tagSel) tagSel.style.borderColor = 'var(--red)';
+      return;
+    } else if (tagSel) tagSel.style.borderColor = '';
+
+    entries.push({
+      tag_id: tagSel.value,
+      year:   yearSel  ? yearSel.value  : DEFAULT_YEAR,
+      month:  monthSel ? monthSel.value : DEFAULT_MONTH,
+      amount: amtInp   ? amtInp.value   : '0',
+      notes:  notesInp ? notesInp.value : ''
+    });
+  });
+
+  if (!valid) { alert('Izaberite kategoriju za svaki red.'); return; }
+  if (!entries.length) { alert('Nema redova za dodelu.'); return; }
+
+  const container = document.getElementById('adv-hidden-fields');
+  container.innerHTML = '';
+  entries.forEach((e, i) => {
+    Object.entries(e).forEach(([k, v]) => {
+      const inp = document.createElement('input');
+      inp.type = 'hidden';
+      inp.name = `rows[${i}][${k}]`;
+      inp.value = v;
+      container.appendChild(inp);
+    });
+  });
+
+  document.getElementById('adv-form').submit();
+}
+
+function toggleQuickAmount(val) {
+  const grp = document.getElementById('quick-amount-group');
+  if (grp) grp.style.display = (val === 'Partial') ? 'block' : 'none';
+  const inp = document.querySelector('[name=amount_paid]');
+  if (inp) {
+    if (val === 'Paid') inp.value = '{{ gross|int }}';
+    else if (val === 'Unpaid') inp.value = '';
+  }
+}
+toggleQuickAmount(document.getElementById('quick-status').value);
+</script>
+
+{% endblock %}

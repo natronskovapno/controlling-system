@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Devizni izvod') }} {{ stmt.statement_number }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != '' and val|float != 0 -%}
+    {{ "{:,.2f}".format(val|float).replace(",","X").replace(".",",").replace("X",".") }}
+  {%- elif val == 0 -%}0,00
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Izvod') }} {{ stmt.statement_number }} — {{ stmt.currency }}</h1>
+    <p class="page-subtitle">{{ tr('Racun') }} {{ stmt.account }} · {{ stmt.statement_date }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('bank.fx_index') }}" class="btn btn-secondary btn-sm">{{ tr('← Nazad') }}</a>
+  </div>
+</div>
+
+<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px;">
+  <div class="kpi-card">
+    <div class="kpi-card__label">{{ tr('Pocetno stanje') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ money(stmt.previous_balance) }}<span class="kpi-card__unit">{{ stmt.currency }}</span></div>
+  </div>
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Novo stanje') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ money(stmt.new_balance) }}<span class="kpi-card__unit">{{ stmt.currency }}</span></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-card__label">IBAN</div>
+    <div class="kpi-card__value" style="font-size:.95rem;">{{ stmt.iban or '—' }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>#</th><th>{{ tr('Opis') }}</th><th>{{ tr('Duguje') }}</th><th>{{ tr('Potrazuje') }}</th><th>{{ tr('RSD protivvr.') }}</th>
+        <th>{{ tr('Datum') }}</th><th>{{ tr('Kurs') }}</th><th>{{ tr('Nalog br.') }}</th><th>{{ tr('Predmet br.') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in txs %}
+      <tr>
+        <td>{{ t.line_no }}</td>
+        <td style="max-width:320px;white-space:normal;">{{ t.description }}</td>
+        <td>{{ money(t.debit) }}</td>
+        <td>{{ money(t.credit) }}</td>
+        <td>{{ money(t.rsd_equivalent) }}</td>
+        <td>{{ t.booking_date }}</td>
+        <td>{{ t.kurs or '—' }}</td>
+        <td style="font-size:.75rem;">{{ t.nalog_br or '—' }}</td>
+        <td style="font-size:.75rem;">{{ t.predmet_br or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

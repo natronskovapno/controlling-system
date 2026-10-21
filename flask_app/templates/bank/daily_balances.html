@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Dnevna stanja računa') }}{% endblock %}
+
+{% macro money(val) %}{%- if val is not none and val|float != 0 -%}{{ "{:,.0f}".format(val|float).replace(",",".") }}{%- else -%}—{%- endif -%}{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Dnevna stanja računa') }}</h1>
+    <p class="page-subtitle">{{ tr('Dnevni pregled prihoda, rashoda i tekućeg stanja') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('bank.index') }}" class="btn btn-secondary btn-sm">{{ tr("← Izvodi") }}</a>
+  </div>
+</div>
+
+<!-- Filters -->
+<form method="get" style="margin-bottom:16px;">
+<div class="filter-bar">
+  <div class="form-group">
+    <label>{{ tr('Račun') }}</label>
+    <select name="account">
+      <option value="">{{ tr('Svi računi') }}</option>
+      {% for a in accounts %}
+        <option value="{{ a.account }}" {{ 'selected' if filters.account == a.account }}>
+          {{ account_labels.get(a.account, a.account) }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Od datuma') }}</label>
+    <input type="date" name="date_from" value="{{ filters.date_from }}">
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Do datuma') }}</label>
+    <input type="date" name="date_to" value="{{ filters.date_to }}">
+  </div>
+  <div class="form-group">
+    <label>&nbsp;</label>
+    <div style="display:flex;gap:6px;">
+      <button type="submit" class="btn btn-primary btn-sm">{{ tr('Filtriraj') }}</button>
+      <a href="{{ url_for('bank.daily_balances') }}" class="btn btn-ghost btn-sm">{{ tr('Reset') }}</a>
+    </div>
+  </div>
+</div>
+</form>
+
+{% if output %}
+<div class="card">
+  <div class="table-wrap">
+    <table class="data-table" style="font-size:.8rem;">
+      <thead>
+        <tr>
+          <th>{{ tr('Datum') }}</th>
+          {% for acct in account_list %}
+            <th class="text-right" colspan="3" style="border-left:2px solid var(--border-soft);padding:6px 8px;">
+              {{ account_labels.get(acct, acct) }}
+            </th>
+          {% endfor %}
+          <th class="text-right" style="border-left:2px solid var(--border-soft);">{{ tr("Total IN") }}</th>
+          <th class="text-right">{{ tr("Total OUT") }}</th>
+        </tr>
+        <tr style="font-size:.72rem;color:var(--ink-muted);background:var(--surface-2,#f0ede8);">
+          <th></th>
+          {% for acct in account_list %}
+            <th class="text-right" style="border-left:2px solid var(--border-soft);">{{ tr('Prihod') }}</th>
+            <th class="text-right">{{ tr('Rashod') }}</th>
+            <th class="text-right" style="font-weight:700;color:var(--ink);">{{ tr('Stanje na dan') }}</th>
+          {% endfor %}
+          <th class="text-right" style="border-left:2px solid var(--border-soft);"></th>
+          <th class="text-right"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in output %}
+        <tr style="background:{% if loop.index is odd %}var(--surface){% else %}var(--surface-alt,#faf9f7){% endif %};">
+          <td style="white-space:nowrap;font-weight:500;">{{ row.date }}</td>
+          {% for acct in account_list %}
+            {% set d = row.accounts.get(acct, {"in":0,"out":0,"balance":0}) %}
+            <td class="text-right" style="border-left:2px solid var(--border-soft);
+                color:{% if d.in > 0 %}var(--green){% else %}var(--ink-ghost){% endif %};">
+              {% if d.in > 0 %}+{{ "{:,.0f}".format(d.in).replace(",",".") }}{% else %}—{% endif %}
+            </td>
+            <td class="text-right" style="color:{% if d.out > 0 %}var(--red){% else %}var(--ink-ghost){% endif %};">
+              {% if d.out > 0 %}−{{ "{:,.0f}".format(d.out).replace(",",".") }}{% else %}—{% endif %}
+            </td>
+            <td class="text-right" style="font-weight:600;background:rgba(255,251,230,.4);">
+              {{ "{:,.0f}".format(d.balance).replace(",",".") }}
+            </td>
+          {% endfor %}
+          <td class="text-right" style="border-left:2px solid var(--border-soft);
+              color:{% if row.total_in > 0 %}var(--green){% else %}var(--ink-ghost){% endif %};">
+            {% if row.total_in > 0 %}+{{ "{:,.0f}".format(row.total_in).replace(",",".") }}{% else %}—{% endif %}
+          </td>
+          <td class="text-right" style="color:{% if row.total_out > 0 %}var(--red){% else %}var(--ink-ghost){% endif %};">
+            {% if row.total_out > 0 %}−{{ "{:,.0f}".format(row.total_out).replace(",",".") }}{% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body">
+    <p class="text-muted">{{ tr('Nema transakcija za izabrane filtere. Izaberite period ili uklonite filtere.') }}</p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

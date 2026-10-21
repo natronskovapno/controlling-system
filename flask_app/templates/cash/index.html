@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Cash Position') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != '' and val|float != 0 -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr("Cash Position") }}</h1>
+    <p class="page-subtitle">{{ tr('Salda, obaveze, potraživanja —') }} {{ summary.today }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('cash.report') }}" target="_blank" class="btn btn-secondary btn-sm">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="width:14px;height:14px;">
+        <path d="M3 2h8l2 2v10H3V2z"/><path d="M9 2v3h3"/><path d="M5 8h6M5 11h4"/>
+      </svg>
+      {{ tr('Štampaj izveštaj') }}
+    </a>
+  </div>
+</div>
+
+{# ── KPI Cards ─────────────────────────────────────────────────────── #}
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:28px;">
+
+  <div class="kpi-card {% if summary.net_position >= 0 %}kpi-card--green{% else %}kpi-card--red{% endif %}">
+    <div class="kpi-card__label">{{ tr('Neto pozicija') }}</div>
+    <div class="kpi-card__value {% if summary.net_position >= 0 %}text-positive{% else %}text-negative{% endif %}" style="font-size:1.5rem;">
+      {{ money(summary.net_position) }}<span class="kpi-card__unit">RSD</span>
+    </div>
+    <div class="kpi-card__sub">{{ tr('salda minus obaveze') }}</div>
+  </div>
+
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Salda na računima') }}</div>
+    <div class="kpi-card__value" style="font-size:1.5rem;">
+      {{ money(summary.total_balance) }}<span class="kpi-card__unit">RSD</span>
+    </div>
+    <div class="kpi-card__sub">{{ tr('iz uvezenih izvoda') }}</div>
+  </div>
+
+  <div class="kpi-card kpi-card--red">
+    <div class="kpi-card__label">{{ tr('Neizmirene obaveze') }}</div>
+    <div class="kpi-card__value text-negative" style="font-size:1.5rem;">
+      {{ money(summary.total_payables) }}<span class="kpi-card__unit">RSD</span>
+    </div>
+    <div class="kpi-card__sub">
+      {% if summary.overdue_count > 0 %}
+        <span class="badge badge-red">{{ summary.overdue_count }} {{ tr('fakt. dospelo') }}</span>
+      {% else %}
+        {{ payables|length }} {{ tr('dobavljača') }}
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Neizmirena potraživanja') }}</div>
+    <div class="kpi-card__value" style="font-size:1.5rem;">
+      {{ money(summary.total_receivables) }}<span class="kpi-card__unit">RSD</span>
+    </div>
+    <div class="kpi-card__sub">{{ receivables|length }} {{ tr("klijenata") }}</div>
+  </div>
+
+</div>
+
+{# ── Main layout: left (tables) + right (sidebar) ─────────────────── #}
+<div class="section-grid" style="grid-template-columns:1fr 320px;gap:24px;align-items:start;">
+
+  {# ── Left column ───────────────────────────────────────────────── #}
+  <div>
+
+    {# Account Balances #}
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-header">
+        <span class="card-title">{{ tr('Stanje na računima') }}</span>
+        {% if balances and balances[0].source == 'actual' %}
+          <span class="badge badge-green" style="font-size:.72rem;">{{ tr('stvarno stanje iz izvoda') }}</span>
+        {% else %}
+          <span class="text-muted" style="font-size:.78rem;">{{ tr('kumulativno iz uvezenih transakcija ⓘ') }}</span>
+        {% endif %}
+      </div>
+      <div class="table-wrap">
+        {% if balances %}
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>{{ tr('Račun') }}</th>
+              <th>{{ tr('Datum stanja') }}</th>
+              <th data-sort="num" class="text-right">{{ tr('Ukupni priliv') }}</th>
+              <th data-sort="num" class="text-right">{{ tr('Ukupni odliv') }}</th>
+              <th data-sort="num" class="text-right">{{ tr('Stanje na računu') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for b in balances %}
+            <tr>
+              <td>
+                <span style="font-weight:500;">{{ b.label }}</span><br>
+                <span class="text-muted" style="font-size:.75rem;font-family:monospace;">{{ b.account }}</span>
+              </td>
+              <td class="text-muted">{{ b.last_date or '—' }}</td>
+              <td class="num text-positive">{{ money(b.total_in) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span></td>
+              <td class="num text-negative">{{ money(b.total_out) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span></td>
+              <td class="num" style="font-weight:600;{% if (b.balance or 0) >= 0 %}color:var(--green);{% else %}color:var(--red);{% endif %}">
+                {{ money(b.balance) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr style="background:var(--canvas-warm);">
+              <td colspan="4" style="font-weight:600;padding:10px 14px;">{{ tr('Ukupno') }}</td>
+              <td class="num" style="font-weight:700;padding:10px 14px;{% if summary.total_balance >= 0 %}color:var(--green);{% else %}color:var(--red);{% endif %}">
+                {{ money(summary.total_balance) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+        {% else %}
+        <div class="empty-state">
+          <p>{{ tr('Nema podataka iz izvoda.') }}</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Payables #}
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-header">
+        <span class="card-title">{{ tr('Neizmirene obaveze') }}</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <a href="{{ url_for('cash.payment_proposal') }}" class="btn btn-primary btn-sm" style="font-size:.8rem;">
+            {{ tr('Predlog plaćanja') }}
+          </a>
+          <span class="badge {% if summary.overdue_count > 0 %}badge-red{% else %}badge-gray{% endif %}">
+            {{ payables|length }} {{ tr('dobavljača') }}{% if summary.overdue_count > 0 %} · {{ summary.overdue_count }} {{ tr('fakt. dospelo') }}{% endif %}
+          </span>
+        </div>
+      </div>
+      <div class="table-wrap">
+        {% if payables %}
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th data-sort="str">{{ tr('Dobavljač') }}</th>
+              <th data-sort="num" class="text-right">{{ tr('Faktura') }}</th>
+              <th data-sort="num" class="text-right">{{ tr('Ukupno') }}</th>
+              <th data-sort="num" class="text-right">{{ tr('Preostalo') }}</th>
+              <th data-sort="num" class="text-right">{{ tr('Od toga dospelo') }}</th>
+              <th data-sort="date">{{ tr('Najraniji rok') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in payables %}
+            <tr>
+              <td style="font-size:.84rem;font-weight:500;">{{ p.supplier_name or '—' }}</td>
+              <td class="num text-muted">{{ p.invoice_count }}</td>
+              <td class="num" style="color:var(--ink-muted);">
+                {{ money(p.total_gross) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+              </td>
+              <td class="num" style="font-weight:700;color:var(--red);">
+                {{ money(p.outstanding) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+              </td>
+              <td class="num">
+                {% if p.overdue_amount and p.overdue_amount > 0 %}
+                  <span style="color:var(--red);font-weight:600;">
+                    {{ money(p.overdue_amount) }} RSD
+                  </span>
+                  <span class="text-muted" style="font-size:.75rem;"> ({{ p.overdue_count }} {{ tr("fakt.)") }}</span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td style="font-size:.82rem;{% if p.earliest_due and p.earliest_due < summary.today %}color:var(--red);font-weight:500;{% else %}color:var(--ink-muted);{% endif %}">
+                {{ p.earliest_due or '—' }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr style="background:var(--canvas-warm);">
+              <td style="font-weight:600;padding:10px 14px;">{{ tr('Ukupno') }}</td>
+              <td class="num" style="padding:10px 14px;color:var(--ink-muted);">{{ payables|sum(attribute='invoice_count') }}</td>
+              <td class="num" style="padding:10px 14px;"></td>
+              <td class="num" style="font-weight:700;padding:10px 14px;color:var(--red);">
+                {{ money(summary.total_payables) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+              </td>
+              <td class="num" style="font-weight:700;padding:10px 14px;color:var(--red);">
+                {% if summary.overdue_amount > 0 %}{{ money(summary.overdue_amount) }} RSD{% else %}—{% endif %}
+              </td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+        {% else %}
+        <div class="empty-state">
+          <p>{{ tr('Nema neizmirenih obaveza. ✓') }}</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Receivables #}
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">{{ tr('Neizmirena potraživanja') }}</span>
+        <span class="badge badge-blue">{{ receivables|length }} {{ tr("klijenata") }}</span>
+      </div>
+      <div class="table-wrap">
+        {% if receivables %}
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th data-sort="str">{{ tr('Klijent') }}</th>
+              <th data-sort="num" class="text-right">{{ tr('Faktura') }}</th>
+              <th data-sort="num" class="text-right">{{ tr('Ukupno') }}</th>
+              <th data-sort="num" class="text-right">{{ tr('Preostalo') }}</th>
+              <th data-sort="num" class="text-right">{{ tr('Od toga dospelo') }}</th>
+              <th data-sort="date">{{ tr('Najraniji rok') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in receivables %}
+            <tr>
+              <td style="font-size:.84rem;font-weight:500;">{{ r.buyer_name or '—' }}</td>
+              <td class="num text-muted">{{ r.invoice_count }}</td>
+              <td class="num" style="color:var(--ink-muted);">
+                {{ money(r.total_gross) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+              </td>
+              <td class="num" style="font-weight:700;color:var(--blue);">
+                {{ money(r.outstanding) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+              </td>
+              <td class="num">
+                {% if r.overdue_amount and r.overdue_amount > 0 %}
+                  <span style="color:var(--red);font-weight:600;">
+                    {{ money(r.overdue_amount) }} RSD
+                  </span>
+                  <span class="text-muted" style="font-size:.75rem;"> ({{ r.overdue_count }} {{ tr("fakt.)") }}</span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td style="font-size:.82rem;{% if r.earliest_due and r.earliest_due < summary.today %}color:var(--red);font-weight:500;{% else %}color:var(--ink-muted);{% endif %}">
+                {{ r.earliest_due or '—' }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr style="background:var(--canvas-warm);">
+              <td style="font-weight:600;padding:10px 14px;">{{ tr('Ukupno') }}</td>
+              <td class="num" style="padding:10px 14px;color:var(--ink-muted);">{{ receivables|sum(attribute='invoice_count') }}</td>
+              <td class="num" style="padding:10px 14px;"></td>
+              <td class="num" style="font-weight:700;padding:10px 14px;color:var(--blue);">
+                {{ money(summary.total_receivables) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+              </td>
+              <td></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+        {% else %}
+        <div class="empty-state">
+          <p>{{ tr('Nema neizmirenih potraživanja.') }}</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>{# /left column #}
+
+  {# ── Right sidebar ──────────────────────────────────────────────── #}
+  <div>
+
+    {# Position summary box #}
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-header">
+        <span class="card-title">{{ tr('Sažetak pozicije') }}</span>
+      </div>
+      <div class="card-body">
+        <table style="width:100%;font-size:.86rem;border-collapse:collapse;">
+          <tr style="border-bottom:1px solid var(--border-soft);">
+            <td style="padding:8px 0;color:var(--ink-muted);">{{ tr('Salda na računima') }}</td>
+            <td style="padding:8px 0;text-align:right;font-weight:600;">
+              {{ money(summary.total_balance) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+            </td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border-soft);">
+            <td style="padding:8px 0;color:var(--ink-muted);">{{ tr('− Obaveze') }}</td>
+            <td style="padding:8px 0;text-align:right;font-weight:600;color:var(--red);">
+              {{ money(summary.total_payables) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+            </td>
+          </tr>
+          <tr style="border-bottom:2px solid var(--ink);font-size:.9rem;">
+            <td style="padding:10px 0;font-weight:700;">{{ tr('= Neto pozicija') }}</td>
+            <td style="padding:10px 0;text-align:right;font-weight:700;{% if summary.net_position >= 0 %}color:var(--green);{% else %}color:var(--red);{% endif %}">
+              {{ money(summary.net_position) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:var(--ink-muted);">{{ tr('+ Potraživanja') }}</td>
+            <td style="padding:8px 0;text-align:right;font-weight:600;color:var(--blue);">
+              {{ money(summary.total_receivables) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+            </td>
+          </tr>
+          {% if summary.overdue_amount > 0 %}
+          <tr>
+            <td style="padding:6px 0;color:var(--red);font-size:.8rem;">{{ tr('⚠ Dospele obaveze') }}</td>
+            <td style="padding:6px 0;text-align:right;font-weight:700;color:var(--red);font-size:.8rem;">
+              {{ money(summary.overdue_amount) }} RSD
+            </td>
+          </tr>
+          {% endif %}
+        </table>
+      </div>
+    </div>
+
+  </div>{# /sidebar #}
+
+</div>{# /section-grid #}
+
+{% endblock %}

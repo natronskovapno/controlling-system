@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Prenosi na racun') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != '' and val|float != 0 -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% macro status_badge(status) %}
+  {%- if status == 'Paid' -%}<span class="badge badge-green">{{ tr('Placeno') }}</span>
+  {%- elif status == 'Partial' -%}<span class="badge badge-amber">{{ tr('Parcijalno') }}</span>
+  {%- elif status == 'Unpaid' -%}<span class="badge badge-red">{{ tr('Neplaceno') }}</span>
+  {%- else -%}<span class="badge badge-gray">—</span>{%- endif -%}
+{% endmacro %}
+
+{% macro match_badge(status) %}
+  {%- if status == 'matched' -%}<span class="badge badge-green">{{ tr('Poklapa se') }}</span>
+  {%- elif status == 'mismatch' -%}<span class="badge badge-amber">{{ tr('Razlika u iznosu') }}</span>
+  {%- elif status == 'no_invoice' -%}<span class="badge badge-red">{{ tr('Nedostaje racun') }}</span>
+  {%- elif status == 'no_bill' -%}<span class="badge badge-red">{{ tr('Nedostaje racun (POS)') }}</span>
+  {%- endif -%}
+{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Prenosi na racun') }}</h1>
+    <p class="page-subtitle">{{ count }} {{ tr('stavki — B2B racuni preko POS-a') }}</p>
+  </div>
+</div>
+
+<!-- KPIs -->
+<div class="kpi-grid" style="grid-template-columns:repeat(6,1fr);margin-bottom:12px;">
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Ukupno bruto') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ money(kpi.total_gross) }}<span class="kpi-card__unit">RSD</span></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-card__label">{{ tr('Ukupno POS bill iznos') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ money(kpi.total_bill_amount) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('Svi B2B bill-ovi (sa i bez racuna)') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--red">
+    <div class="kpi-card__label">{{ tr('Neplaceno') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ money(kpi.total_unpaid) }}<span class="kpi-card__unit">RSD</span></div>
+  </div>
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Razlika u iznosu') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ kpi.n_mismatch }}</div>
+  </div>
+  <div class="kpi-card kpi-card--red">
+    <div class="kpi-card__label">{{ tr('Nedostaje racun') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ kpi.n_no_invoice }}</div>
+    <div class="kpi-card__sub">{{ tr('POS bill bez izlaznog racuna') }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-card__label">{{ tr('Nedostaje POS racun') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ kpi.n_no_bill }}</div>
+    <div class="kpi-card__sub">{{ tr('Racun bez POS fiskalnog racuna') }}</div>
+  </div>
+</div>
+
+<!-- Filters -->
+<form method="get">
+  <div class="filter-bar">
+    <div class="form-group">
+      <label>{{ tr('Partner') }}</label>
+      <input type="text" name="search" value="{{ filters.search }}" placeholder="{{ tr('Pretrazi naziv...') }}">
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Od datuma') }}</label>
+      <input type="date" name="date_from" value="{{ filters.date_from }}">
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Do datuma') }}</label>
+      <input type="date" name="date_to" value="{{ filters.date_to }}">
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Venue') }}</label>
+      <select name="venue">
+        <option value="">{{ tr('Svi') }}</option>
+        {% for v in venues %}
+        <option value="{{ v }}" {{ 'selected' if filters.venue == v }}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Status placanja') }}</label>
+      <select name="payment_filter">
+        <option value="">{{ tr('Svi') }}</option>
+        <option value="Unpaid"  {{ 'selected' if filters.payment_filter == 'Unpaid' }}>{{ tr('Neplaceno') }}</option>
+        <option value="Partial" {{ 'selected' if filters.payment_filter == 'Partial' }}>{{ tr('Parcijalno') }}</option>
+        <option value="Paid"    {{ 'selected' if filters.payment_filter == 'Paid' }}>{{ tr('Placeno') }}</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Poklapanje') }}</label>
+      <select name="match_filter">
+        <option value="">{{ tr('Sve') }}</option>
+        <option value="matched"    {{ 'selected' if filters.match_filter == 'matched' }}>{{ tr('Poklapa se') }}</option>
+        <option value="mismatch"   {{ 'selected' if filters.match_filter == 'mismatch' }}>{{ tr('Razlika u iznosu') }}</option>
+        <option value="no_invoice" {{ 'selected' if filters.match_filter == 'no_invoice' }}>{{ tr('Nedostaje racun') }}</option>
+        <option value="no_bill"    {{ 'selected' if filters.match_filter == 'no_bill' }}>{{ tr('Nedostaje POS racun') }}</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <div style="display:flex;gap:6px;">
+        <button type="submit" class="btn btn-primary btn-sm">{{ tr('Filtriraj') }}</button>
+        <a href="{{ url_for('prenosi.index') }}" class="btn btn-ghost btn-sm">{{ tr('Reset') }}</a>
+      </div>
+    </div>
+  </div>
+</form>
+
+<div class="card" style="overflow-x:auto;">
+  <table class="data-table" style="min-width:1400px;">
+    <thead>
+      <tr>
+        <th>{{ tr('Broj racuna') }}</th>
+        <th>{{ tr('Datum') }}</th>
+        <th>{{ tr('Partner') }}</th>
+        <th>{{ tr("PIB") }}</th>
+        <th>{{ tr('Neto') }}</th>
+        <th>{{ tr('PDV') }}</th>
+        <th>{{ tr('Bruto') }}</th>
+        <th>{{ tr('Placeno') }}</th>
+        <th>{{ tr('Status placanja') }}</th>
+        <th>{{ tr('Fiskalni racun') }}</th>
+        <th>{{ tr('POS bill (iznos)') }}</th>
+        <th>POS bill</th>
+        <th>{{ tr('Poklapanje') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.full_number or '—' }}</td>
+        <td>{{ r.document_date or '—' }}</td>
+        <td>{{ r.partner_name or '—' }}</td>
+        <td>{{ r.partner_tax or '—' }}</td>
+        <td>{{ money(r.amount_net) }}</td>
+        <td>{{ money(r.amount_vat) }}</td>
+        <td><strong>{{ money(r.amount_gross) }}</strong></td>
+        <td>{{ money(r.payed_amount) }}</td>
+        <td>
+          {{ status_badge(r.payment_status) }}
+          {% if r.manual_paid %}
+            <div style="font-size:.68rem;color:var(--ink-muted);margin-top:2px;">
+              {{ tr("rucno") }}{% if r.manual_paid_date %} — {{ r.manual_paid_date }}{% endif %}{% if r.manual_notes %} — {{ r.manual_notes }}{% endif %}
+            </div>
+            <form method="post" action="{{ url_for('prenosi.unmark_paid') }}" style="margin-top:2px;">
+              <input type="hidden" name="fiscal_receipt_number" value="{{ r.fiscal_receipt_number }}">
+              <button type="submit" class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:.68rem;">{{ tr('poništi') }}</button>
+            </form>
+          {% else %}
+            <form method="post" action="{{ url_for('prenosi.mark_paid') }}"
+                  style="margin-top:4px;display:flex;gap:3px;align-items:center;">
+              <input type="hidden" name="fiscal_receipt_number" value="{{ r.fiscal_receipt_number }}">
+              <input type="number" name="paid_amount" step="0.01"
+                     placeholder="{{ ((r.amount_gross or r.bill_amount) | round(0)) | int if (r.amount_gross or r.bill_amount) else 'iznos' }}"
+                     style="width:70px;font-size:.7rem;padding:2px 4px;"
+                     title="{{ tr('Prazno = pun iznos') }} ({{ money(r.amount_gross or r.bill_amount) }} RSD)">
+              <input type="date" name="paid_date" style="font-size:.68rem;padding:2px;width:100px;">
+              <button type="submit" class="btn btn-secondary btn-sm" style="padding:2px 6px;font-size:.68rem;white-space:nowrap;">{{ tr('✓ plaćeno') }}</button>
+            </form>
+          {% endif %}
+        </td>
+        <td style="font-size:.75rem;color:var(--ink-muted);">{{ r.fiscal_receipt_number or '—' }}</td>
+        <td><strong>{{ money(r.bill_amount) }}</strong></td>
+        <td>
+          {% if r.bill_id %}
+            #{{ r.bill_id }} · {{ r.bill_venue }}
+            {% if r.amount_diff and r.amount_diff != 0 %}
+              <div style="font-size:.72rem;color:var(--danger,#c0392b);">
+                {{ tr("razlika:") }} {{ money(r.amount_diff) }} RSD
+              </div>
+            {% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td>{{ match_badge(r.match_status) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="13" style="text-align:center;color:var(--ink-muted);">{{ tr('Nema stavki za izabrane filtere.') }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}<a href="{{ url_for('prenosi.index', page=page-1, **filters) }}">‹</a>{% endif %}
+  {% for p in range(1, total_pages+1) %}
+    {% if p == page %}<span class="current">{{ p }}</span>
+    {% elif p <= 2 or p >= total_pages-1 or (p >= page-2 and p <= page+2) %}
+      <a href="{{ url_for('prenosi.index', page=p, **filters) }}">{{ p }}</a>
+    {% elif p == 3 or p == total_pages-2 %}<span>…</span>{% endif %}
+  {% endfor %}
+  {% if page < total_pages %}<a href="{{ url_for('prenosi.index', page=page+1, **filters) }}">›</a>{% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

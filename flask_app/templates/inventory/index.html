@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Lager (Inventar)') }}{% endblock %}
+
+{% macro qty(val) %}
+  {%- if val is not none -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Lager (Inventar)') }}</h1>
+    <p class="page-subtitle">
+      {% if selected_date %}{{ tr('Stanje na dan') }} {{ selected_date }} — {{ count }} {{ tr('proizvoda') }}{% else %}{{ tr('Nema podataka') }}{% endif %}
+    </p>
+  </div>
+</div>
+
+{% if not selected_date %}
+<div class="card"><div class="card-body">
+  {{ tr('Nema uvezenih podataka o inventaru. Pokrenite') }} <code>backfill_inventory_stock.py</code> {{ tr('za inicijalni uvoz.') }}
+</div></div>
+{% else %}
+
+<form method="get">
+  <div class="filter-bar">
+    <div class="form-group">
+      <label>{{ tr('Datum') }}</label>
+      <select name="date" onchange="this.form.submit()">
+        {% for d in dates %}
+        <option value="{{ d }}" {{ 'selected' if d == selected_date }}>{{ d }}{{ ' ' ~ tr('(najnoviji)') if d == latest_date }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Kategorija') }}</label>
+      <select name="category">
+        <option value="">{{ tr('Sve') }}</option>
+        {% for c in categories %}
+        <option value="{{ c }}" {{ 'selected' if filters.category == c }}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Proizvod') }}</label>
+      <input type="text" name="search" value="{{ filters.search }}" placeholder="{{ tr('Pretrazi naziv...') }}">
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <div style="display:flex;gap:6px;">
+        <button type="submit" class="btn btn-primary btn-sm">{{ tr('Filtriraj') }}</button>
+        <a href="{{ url_for('inventory.index') }}" class="btn btn-ghost btn-sm">{{ tr('Reset') }}</a>
+      </div>
+    </div>
+  </div>
+</form>
+
+<div class="card">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>{{ tr('Kategorija') }}</th><th>{{ tr('Grupa') }}</th><th>{{ tr('Proizvod') }}</th><th>JM</th>
+        <th>{{ tr('Kolicina na stanju') }}</th><th>{{ tr("Shift") }}</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td style="font-size:.78rem;">{{ r.category_name }}</td>
+        <td style="font-size:.78rem;">{{ r.group_name }}</td>
+        <td>{{ r.product_name }}</td>
+        <td>{{ r.unit_measure }}</td>
+        <td><strong>{{ qty(r.closing_quantity) }}</strong></td>
+        <td style="font-size:.72rem;color:var(--ink-muted);">{{ r.shift_id }}</td>
+        <td>
+          {% if r.product_id %}
+          <a href="{{ url_for('inventory.product_detail', product_id=r.product_id) }}" class="btn btn-ghost btn-sm">{{ tr("Istorija") }}</a>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" style="text-align:center;color:var(--ink-muted);">{{ tr('Nema stavki za izabrane filtere.') }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}<a href="{{ url_for('inventory.index', page=page-1, date=selected_date, **filters) }}">‹</a>{% endif %}
+  <span class="current">{{ page }} / {{ total_pages }}</span>
+  {% if page < total_pages %}<a href="{{ url_for('inventory.index', page=page+1, date=selected_date, **filters) }}">›</a>{% endif %}
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}

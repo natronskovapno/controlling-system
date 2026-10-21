@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Prodaja') }} — {{ event.date }} {{ venue_label }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Prodaja po stavkama') }}</h1>
+    <p class="page-subtitle">
+      {{ event.date }} &nbsp;·&nbsp;
+      <span class="badge {{ venue_badge }}">{{ venue_label }}</span>
+      &nbsp;·&nbsp; {{ event.event_name or event.organiser or tr('Događaj #')~event.event_id }}
+    </p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('daily_log.detail', event_id=event.event_id) }}" class="btn btn-secondary btn-sm">{{ tr('← Detalji') }}</a>
+  </div>
+</div>
+
+{# Summary KPIs #}
+<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;">
+  <div style="background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--r-md);padding:14px 20px;min-width:140px;">
+    <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-muted);margin-bottom:4px;">{{ tr('Ukupno net') }}</div>
+    <div style="font-size:1.2rem;font-weight:700;">{{ "{:,.0f}".format(total_net).replace(",",".") }} <span style="font-size:.65rem;font-weight:400;">RSD</span></div>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--r-md);padding:14px 20px;min-width:140px;">
+    <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-muted);margin-bottom:4px;">{{ tr('Ukupno gross') }}</div>
+    <div style="font-size:1.2rem;font-weight:700;">{{ "{:,.0f}".format(total_gross).replace(",",".") }} <span style="font-size:.65rem;font-weight:400;">RSD</span></div>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--r-md);padding:14px 20px;min-width:140px;">
+    <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-muted);margin-bottom:4px;">{{ tr('Prodanih stavki') }}</div>
+    <div style="font-size:1.2rem;font-weight:700;">{{ "{:,.0f}".format(total_qty).replace(",",".") }}</div>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--r-md);padding:14px 20px;min-width:140px;">
+    <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-muted);margin-bottom:4px;">{{ tr('Različitih proizvoda') }}</div>
+    <div style="font-size:1.2rem;font-weight:700;">{{ products|length }}</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+
+  {# Product summary #}
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Prodaja po proizvodu') }}</span></div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>{{ tr('Proizvod') }}</th>
+            <th class="text-right">{{ tr('Kol.') }}</th>
+            <th class="text-right">{{ tr('Neto') }} (RSD)</th>
+            <th class="text-right">{{ tr('Bruto') }} (RSD)</th>
+            <th class="text-right">%</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for name, vals in products %}
+          <tr>
+            <td style="font-size:.8rem;">{{ name }}</td>
+            <td class="text-right" style="font-size:.8rem;">{{ "{:,.0f}".format(vals.qty).replace(",",".") }}</td>
+            <td class="text-right" style="font-size:.8rem;">{{ "{:,.0f}".format(vals.net).replace(",",".") }}</td>
+            <td class="text-right" style="font-size:.8rem;font-weight:600;">{{ "{:,.0f}".format(vals.gross).replace(",",".") }}</td>
+            <td class="text-right" style="font-size:.75rem;color:var(--ink-muted);">
+              {% if total_gross > 0 %}{{ "{:.1f}".format(vals.gross / total_gross * 100) }}%{% else %}—{% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-muted" style="padding:16px;">{{ tr('Nema podataka.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+        {% if total_gross > 0 %}
+        <tfoot>
+          <tr style="border-top:2px solid var(--border-soft);font-weight:700;">
+            <td style="padding:8px 14px;">{{ tr('UKUPNO') }}</td>
+            <td class="text-right" style="padding:8px 14px;">{{ "{:,.0f}".format(total_qty).replace(",",".") }}</td>
+            <td class="text-right" style="padding:8px 14px;">{{ "{:,.0f}".format(total_net).replace(",",".") }}</td>
+            <td class="text-right" style="padding:8px 14px;">{{ "{:,.0f}".format(total_gross).replace(",",".") }}</td>
+            <td class="text-right" style="padding:8px 14px;">100%</td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+
+  {# Hourly breakdown #}
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Prodaja po satu') }}</span></div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>{{ tr('Sat') }}</th>
+            <th>{{ tr('Proizvod') }}</th>
+            <th class="text-right">{{ tr('Kol.') }}</th>
+            <th class="text-right">{{ tr('Neto') }}</th>
+            <th class="text-right">{{ tr('Bruto') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set ns = namespace(prev_hour=-1) %}
+          {% for r in rows|sort(attribute='hour_slot') %}
+          {% if r.hour_slot != ns.prev_hour %}
+          <tr style="background:var(--accent-bg);">
+            <td colspan="5" style="padding:4px 14px;font-size:.72rem;font-weight:700;color:var(--ink-muted);">
+              {{ r.hour_slot }}:00
+              {% if r.hour_slot < 3 %}<span style="color:var(--amber);font-size:.68rem;"> {{ tr('← posle ponoći') }}</span>{% endif %}
+            </td>
+          </tr>
+          {% set ns.prev_hour = r.hour_slot %}
+          {% endif %}
+          <tr>
+            <td style="font-size:.75rem;color:var(--ink-muted);padding:4px 14px;"></td>
+            <td style="font-size:.78rem;padding:4px 14px;">{{ r.product_name }}</td>
+            <td class="text-right" style="font-size:.78rem;padding:4px 14px;">{{ "{:,.0f}".format(r.qty).replace(",",".") }}</td>
+            <td class="text-right" style="font-size:.78rem;padding:4px 14px;">{{ "{:,.0f}".format(r.net).replace(",",".") }}</td>
+            <td class="text-right" style="font-size:.78rem;padding:4px 14px;font-weight:600;">{{ "{:,.0f}".format(r.gross).replace(",",".") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

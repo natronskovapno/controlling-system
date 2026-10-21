@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "fin_statements/_macros.html" import check_badge %}
+{% block title %}{{ tr('Bruto bilansi') }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Bruto bilansi') }}</h1>
+    <p class="page-subtitle">{{ tr('Uvezeni preseci knjigovodstvenog stanja — izvor za finansijske izveštaje') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('fin_statements.snapshot_upload') }}" class="btn btn-primary btn-sm">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="width:14px;height:14px;">
+        <path d="M8 2v8m0 0L5 7m3 3l3-3"/><path d="M3 12h10"/>
+      </svg>
+      {{ tr('Uvezi novi bilans') }}
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  {% if snapshots %}
+  <div class="table-wrap">
+    <table class="data-table" style="font-size:.84rem;">
+      <thead><tr>
+        <th>{{ tr('Period') }}</th><th>{{ tr('Tip') }}</th><th>Format</th><th>{{ tr("Fajl") }}</th>
+        <th class="text-right">{{ tr('Konta') }}</th><th>{{ tr('Kontrole') }}</th><th>{{ tr("Uvezeno") }}</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for s in snapshots %}
+        <tr>
+          <td><a href="{{ url_for('fin_statements.snapshot_detail', snapshot_id=s.id) }}"><strong>{{ s.period_from }} → {{ s.period_to }}</strong></a></td>
+          <td>{% if s.is_closing %}<span class="badge badge-blue">{{ tr('Zaključni') }}</span>{% else %}<span class="badge badge-amber">{{ tr('Presek') }}</span>{% endif %}</td>
+          <td>{{ s.fmt }}</td>
+          <td class="text-muted">{{ s.source_file }}</td>
+          <td class="text-right">{{ s.line_count }}</td>
+          <td>{{ check_badge(s.checks_ok) }}{% if s.warnings %} <span class="text-muted" title="{{ s.warnings|map('string')|join(' | ') }}">({{ s.warnings|length }} {{ tr("nap.)") }}</span>{% endif %}</td>
+          <td class="text-muted">{{ s.imported_at }}</td>
+          <td class="text-right">
+            <form method="post" action="{{ url_for('fin_statements.snapshot_delete', snapshot_id=s.id) }}"
+                  onsubmit="return confirm('Obrisati bruto bilans {{ s.period_from }} → {{ s.period_to }}?');" style="display:inline;">
+              <button type="submit" class="btn btn-secondary btn-sm">{{ tr('Obriši') }}</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body"><p class="text-muted">{{ tr('Još nema uvezenih bruto bilansa.') }}</p></div>
+  {% endif %}
+</div>
+{% endblock %}

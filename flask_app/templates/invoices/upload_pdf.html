@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Uvoz RČ faktura — PDF') }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Uvoz RČ faktura iz PDF-a') }}</h1>
+    <p class="page-subtitle">{{ tr('Automatsko parsiranje izlaznih faktura Garden Stage — format RČ') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('invoices.index', direction='out') }}" class="btn btn-secondary btn-sm">{{ tr('← Nazad') }}</a>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 320px;gap:24px;align-items:start;">
+
+  {# Upload form #}
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">{{ tr('Izaberi PDF fajlove') }}</span>
+    </div>
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data">
+        <div class="form-group" style="margin-bottom:20px;">
+          <label>{{ tr('PDF fakture (.pdf) — možeš izabrati više odjednom') }}</label>
+          <input type="file" name="files" accept=".pdf" multiple
+                 style="width:100%;padding:10px 12px;border:2px dashed var(--border);
+                        border-radius:var(--r-md);background:var(--canvas);cursor:pointer;">
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button type="submit" class="btn btn-primary">
+            {{ tr('Učitaj i pregledaj') }}
+          </button>
+        </div>
+        <p style="font-size:.78rem;color:var(--ink-muted);margin-top:12px;">
+          {{ tr('Podaci') }} <strong>{{ tr('neće biti upisani') }}</strong> {{ tr('dok ne potvrdite na sledećem ekranu.') }}
+        </p>
+      </form>
+    </div>
+  </div>
+
+  {# Info panel #}
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">{{ tr('Podržani format') }}</span>
+    </div>
+    <div class="card-body" style="font-size:.84rem;line-height:1.65;">
+      <span class="badge badge-blue" style="margin-bottom:8px;">{{ tr('Format RČ — Garden Stage') }}</span>
+      <p style="color:var(--ink-muted);margin-bottom:10px;">
+        {{ tr('Fakture sa zaglavljem') }} <em>GARDEN STAGE D.O.O.</em> {{ tr('u RČ formatu.') }}
+      </p>
+      <p style="color:var(--ink-muted);margin-bottom:6px;">{{ tr('Parser automatski čita:') }}</p>
+      <ul style="color:var(--ink-muted);padding-left:16px;margin:0;">
+        <li>{{ tr('Broj fakture (RČ XX/YY)') }}</li>
+        <li>{{ tr('Datum izdavanja i dospeća') }}</li>
+        <li>{{ tr("Klijent i PIB") }}</li>
+        <li>{{ tr('Neto iznos, PDV, stopa') }}</li>
+        <li>{{ tr('Opis stavke') }}</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

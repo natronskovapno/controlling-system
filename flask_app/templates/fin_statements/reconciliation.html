@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "fin_statements/_macros.html" import note, money %}
+{% block title %}{{ tr('Usaglašavanje') }}{% endblock %}
+{% block content %}
+<style>
+  .fs-table { font-size: .8rem; }
+  .fs-table td { padding-top: 4px; padding-bottom: 4px; white-space: nowrap; }
+  .fs-table tr.sub td { font-weight: 700; }
+  .fs-table tr.tot td { font-weight: 700; border-top: 2px solid var(--text); }
+  .fs-table tr.item td:first-child { padding-left: 24px; }
+  .fs-table .c-act { background: var(--canvas); font-weight: 600; }
+  .fs-table .dev { color: var(--text-muted); font-size: .7rem; }
+</style>
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Usaglašavanje') }}</h1>
+    <p class="page-subtitle">{{ tr('Zamrznute procene iz međubilansa naspram zaključnog bilansa · iznosi u 000 RSD') }}</p>
+  </div>
+  {% if d.years|length > 1 %}
+  <div class="page-header__actions">
+    {% for y in d.years %}<a href="?godina={{ y }}" class="btn btn-sm {% if y == d.year %}btn-primary{% else %}btn-secondary{% endif %}">{{ y }}</a>{% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+{% if not d.year %}
+  {{ note('Nema međubilansa — usaglašavanje počinje kada postoji bar jedan presek u toku godine.', 'info') }}
+{% else %}
+{% if not d.has_actual %}
+  {{ note(tr('Zaključni bilans za ') ~ d.year ~ tr('. još nije uvezen. Procene su zamrznute i biće upoređene automatski kada ga uvezete.'), 'info') }}
+{% endif %}
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header"><span class="card-title">{{ tr('Zamrznute procene') }}</span>
+    <span class="text-muted" style="font-size:.78rem;">{{ tr('Beleže se pri uvozu međubilansa; ponovno zamrzavanje koristi trenutno mapiranje i parametre') }}</span></div>
+  <div class="table-wrap"><table class="data-table fs-table">
+    <thead><tr><th>{{ tr('Presek') }}</th><th>{{ tr("Zamrznuto") }}</th><th class="text-right">{{ tr('Neto YTD') }}</th><th class="text-right">{{ tr('Proj. neto') }} {{ d.year }}</th><th></th></tr></thead>
+    <tbody>{% for l in d.logs %}
+      <tr><td>{{ l.period_to }}</td><td class="text-muted">{{ l.frozen_at }}</td>
+        <td class="text-right">{{ money(l.p.ytd.NET / 1000) }}</td><td class="text-right">{{ money(l.p.proj.NET / 1000) }}</td>
+        <td class="text-right">
+          <form method="post" action="{{ url_for('fin_statements.reconciliation_refreeze', snapshot_id=l.id) }}" style="display:inline;"
+                onsubmit="return confirm('Zameniti zamrznute procene za {{ l.period_to }} trenutnim proračunom?');">
+            <input type="hidden" name="godina" value="{{ d.year }}">
+            <button type="submit" class="btn btn-secondary btn-sm" {% if d.has_actual %}disabled title="{{ tr('Zaključni bilans postoji — procene su zaključane') }}"{% endif %}>{{ tr("Zamrzni ponovo") }}</button>
+          </form>
+        </td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</div>
+
+<div class="section-grid" style="grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:20px;align-items:start;">
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr("Projekcija") }} {{ d.year }} {{ tr('naspram zaključnog bilansa') }}</span></div>
+    <div class="table-wrap"><table class="data-table fs-table">
+      <thead><tr>
+        <th style="min-width:220px;">{{ tr('Bilans uspeha') }}</th>
+        {% for l in d.logs %}<th class="text-right">{{ tr("Proj. @") }} {{ l.period_to }}</th>{% endfor %}
+        <th class="text-right c-act">{{ tr('Zaključni') }} {{ d.year }}</th>
+      </tr></thead>
+      <tbody>{% for r in d.rows %}
+        <tr class="{{ r.kind }}"><td>{{ tr(r.label) }}</td>
+          {% for v in r.proj %}
+            <td class="text-right">{{ money((v or 0) / 1000) }}
+              {% if r.devs[loop.index0] is not none %}<br><span class="dev">{{ "%+.0f"|format(r.devs[loop.index0] / 1000) }}</span>{% endif %}</td>
+          {% endfor %}
+          <td class="text-right c-act">{% if r.actual is not none %}{{ money(r.actual / 1000) }}{% else %}<span class="text-muted">{{ tr('čeka') }}</span>{% endif %}</td>
+        </tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Parametri procena') }}</span></div>
+    <div class="table-wrap"><table class="data-table fs-table">
+      <thead><tr><th>{{ tr("Parametar") }}</th>{% for l in d.logs %}<th class="text-right">@ {{ l.period_to }}</th>{% endfor %}<th class="text-right c-act">{{ tr("Stvarno") }}</th></tr></thead>
+      <tbody>{% for p in d.param_rows %}
+        <tr><td>{{ p.label }}</td>
+          {% for v in p.est %}<td class="text-right">{% if v is none %}—{% elif p.fmt == 'pct' %}{{ ("%.1f"|format(v * 100)).replace('.', ',') }}%{% else %}{{ money(v) }}{% endif %}</td>{% endfor %}
+          <td class="text-right c-act">{% if p.actual is none %}<span class="text-muted">{{ tr('čeka') }}</span>{% elif p.fmt == 'pct' %}{{ ("%.1f"|format(p.actual * 100)).replace('.', ',') }}%{% else %}{{ money(p.actual) }}{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+    <div class="card-body text-muted" style="font-size:.78rem;">{{ tr('Kada zaključni bilans stigne, odstupanja služe za korekciju parametara za narednu godinu (Podešavanja).') }}</div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}{{ tr('Događaji -') }} {{ event_type }} - {{ month }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="page-header mb-4">
+        <h2>{{ tr('Događaji:') }} {{ event_type }}</h2>
+        <p class="text-muted">{{ month }} · {{ events|length }} {{ tr('događaja') }}</p>
+        <a href="{{ url_for('event_type_analysis.index', date_from=request.args.get('date_from', ''), date_to=request.args.get('date_to', ''), venue=venue_filter) }}" 
+           class="btn btn-secondary">{{ tr('← Nazad') }}</a>
+    </div>
+
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>{{ tr('Datum') }}</th>
+                        <th>{{ tr('Lokal') }}</th>
+                        <th>{{ tr('Organizator') }}</th>
+                        <th>{{ tr('Naziv') }}</th>
+                        <th class="text-end">{{ tr('Prihod') }}</th>
+                        <th class="text-end">COGS</th>
+                        <th class="text-end">{{ tr('Zarade konobara') }}</th>
+                        <th class="text-end">{{ tr('Zarade fizikalaca') }}</th>
+                        <th class="text-end">{{ tr('Fiksni troškovi') }}</th>
+                        <th class="text-end">{{ tr('Bruto dobit') }}</th>
+                        <th class="text-end">{{ tr('Neto dobit') }}</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for evt in events %}
+                    <tr>
+                        <td>{{ evt.date }}</td>
+                        <td>
+                            {% if evt.venue == 'Garden' %}
+                                <span class="badge bg-primary">Garden</span>
+                            {% elif evt.venue == 'Corner' %}
+                                <span class="badge bg-warning">Corner</span>
+                            {% else %}
+                                {{ evt.venue }}
+                            {% endif %}
+                        </td>
+                        <td>{{ evt.organiser or '—' }}</td>
+                        <td>{{ evt.event_name or '—' }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(evt.total_revenue) if evt.total_revenue else '—' }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(evt.cogs) if evt.cogs else '—' }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(evt.wages) if evt.wages else '—' }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(evt.laborers) if evt.laborers else '—' }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(evt.fixed_profit) if evt.fixed_profit else '—' }}</td>
+                        <td class="text-end">
+                            {% if evt.gross_profit is not none %}
+                                <span class="{% if evt.gross_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                    {{ "{:,.0f}".format(evt.gross_profit) }}
+                                </span>
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if evt.net_profit is not none %}
+                                <span class="{% if evt.net_profit >= 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
+                                    {{ "{:,.0f}".format(evt.net_profit) }}
+                                </span>
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('daily_log.detail', event_id=evt.event_id) }}" 
+                               class="btn btn-sm btn-outline-primary">{{ tr('Detalji') }}</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-secondary fw-bold">
+                    <tr>
+                        <td colspan="4">{{ tr('UKUPNO / PROSEK') }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(events|sum(attribute='total_revenue')|default(0)) }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(events|sum(attribute='cogs')|default(0)) }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(events|sum(attribute='wages')|default(0)) }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(events|sum(attribute='laborers')|default(0)) }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(events|sum(attribute='fixed_profit')|default(0)) }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(events|sum(attribute='gross_profit')|default(0)) }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(events|sum(attribute='net_profit')|default(0)) }}</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

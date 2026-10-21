@@ -1,0 +1,349 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Kartice — Pivot') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val|float != 0 -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Kartice — Pregled po entitetima') }}</h1>
+    <p class="page-subtitle">{{ tr('Pivot tabela potrošnje') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('debit_cards.transactions') }}" class="btn btn-secondary btn-sm">{{ tr('📋 Transakcije (detalji)') }}</a>
+  </div>
+</div>
+
+<!-- KPIs -->
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+  <div class="kpi-card kpi-card--red">
+    <div class="kpi-card__label">{{ tr('Ukupna potrošnja') }}</div>
+    <div class="kpi-card__value" style="font-size:1.4rem;">{{ money(total_spending) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('Svi izdaci') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Broj transakcija') }}</div>
+    <div class="kpi-card__value" style="font-size:1.4rem;">{{ transaction_count }}</div>
+    <div class="kpi-card__sub">{{ tr('Ukupno plaćanja') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Broj entiteta') }}</div>
+    <div class="kpi-card__value" style="font-size:1.4rem;">{{ unique_counterparties }}</div>
+    <div class="kpi-card__sub">{{ tr('Različiti primаoci') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--green">
+    <div class="kpi-card__label">{{ tr('Prosečan iznos') }}</div>
+    <div class="kpi-card__value" style="font-size:1.4rem;">{{ money(avg_transaction) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('Po transakciji') }}</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 280px;gap:20px;">
+<div>
+
+<!-- Filters -->
+<form method="get">
+<div class="filter-bar">
+  <div class="form-group">
+    <label>{{ tr('Entitet') }}</label>
+    <select name="counterparty">
+      <option value="">{{ tr('Svi') }}</option>
+      {% for c in all_counterparties %}
+        <option value="{{ c.counterparty }}" {{ 'selected' if filters.counterparty == c.counterparty }}>
+          {{ c.counterparty }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Klasifikacija') }}</label>
+    <select name="classification">
+      <option value="">{{ tr('Sve') }}</option>
+      {% for c in all_classifications %}
+        <option value="{{ c.classification }}" {{ 'selected' if filters.classification == c.classification }}>
+          {{ c.classification }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Od datuma') }}</label>
+    <input type="date" name="date_from" value="{{ filters.date_from }}">
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Do datuma') }}</label>
+    <input type="date" name="date_to" value="{{ filters.date_to }}">
+  </div>
+  <div class="form-group">
+    <label>&nbsp;</label>
+    <div style="display:flex;gap:6px;">
+      <button type="submit" class="btn btn-primary btn-sm">{{ tr('Filtriraj') }}</button>
+      <a href="{{ url_for('debit_cards.index') }}" class="btn btn-ghost btn-sm">{{ tr('Reset') }}</a>
+    </div>
+  </div>
+</div>
+</form>
+
+<!-- Pivot Table -->
+<div class="card" style="margin-top:16px;">
+  <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+    <span class="card-title">{{ tr('Potrošnja po entitetu i mesecu') }}</span>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-ghost btn-sm" onclick="expandAllYears()" title="{{ tr('Prikaži sve mesece') }}">
+        {{ tr('▼ Proširi sve') }}
+      </button>
+      <button class="btn btn-ghost btn-sm" onclick="collapseAllYears()" title="{{ tr('Prikaži samo godine') }}">
+        {{ tr('▲ Skupi sve') }}
+      </button>
+    </div>
+  </div>
+  <div class="table-wrap" style="overflow-x:auto;">
+    {# Build year groups first #}
+    {% set year_groups = {} %}
+    {% for month in sorted_months %}
+      {% set year = month[:4] %}
+      {% if year not in year_groups %}
+        {% set _ = year_groups.update({year: []}) %}
+      {% endif %}
+      {% set _ = year_groups[year].append(month) %}
+    {% endfor %}
+    
+    <table class="data-table" style="border-collapse:collapse;width:100%;font-size:.82rem;" id="pivot-table">
+      <thead>
+        {# First row: Year headers (when expanded) or merged year cells (when collapsed) #}
+        <tr style="border-bottom:2px solid var(--border);">
+          <th rowspan="2" style="position:sticky;left:0;background:var(--surface);z-index:3;width:200px;vertical-align:bottom;padding:8px;border-right:1px solid var(--border);">{{ tr('Entitet') }}</th>
+          {% for year in year_groups.keys()|sort %}
+            {# Expanded year header (with colspan) #}
+            <th colspan="{{ year_groups[year]|length }}" 
+                class="year-header-expanded year-header-{{ year }}" 
+                data-year="{{ year }}"
+                data-month-count="{{ year_groups[year]|length }}"
+                onclick="toggleYear('{{ year }}')"
+                style="background:var(--surface-hover);font-weight:700;cursor:pointer;user-select:none;text-align:center;padding:8px;border-left:2px solid var(--border);border-right:1px solid var(--border);"
+                title="{{ tr('Kliknite da skupite') }} {{ year }}">
+              {{ year }} <span class="toggle-icon">▼</span>
+            </th>
+            {# Collapsed year header (with rowspan=2, hidden by default) #}
+            <th rowspan="2"
+                class="year-header-collapsed year-header-{{ year }}" 
+                data-year="{{ year }}"
+                data-month-count="{{ year_groups[year]|length }}"
+                onclick="toggleYear('{{ year }}')"
+                style="display:none;background:var(--surface-hover);font-weight:700;cursor:pointer;user-select:none;text-align:center;width:110px;padding:8px;border-left:2px solid var(--border);border-right:1px solid var(--border);vertical-align:middle;"
+                title="{{ tr('Kliknite da proširite') }} {{ year }}">
+              {{ year }} <span class="toggle-icon">▶</span>
+            </th>
+          {% endfor %}
+          <th rowspan="2" style="background:var(--surface-hover);font-weight:600;width:120px;border-left:2px solid var(--border);vertical-align:bottom;padding:8px;text-align:right;">{{ tr('UKUPNO') }}</th>
+        </tr>
+        
+        {# Second row: Month numbers (only visible when year is expanded) #}
+        <tr style="border-bottom:2px solid var(--border);">
+          {% for year in year_groups.keys()|sort %}
+            {% for month in year_groups[year] %}
+              <th class="month-header month-{{ year }}" 
+                  data-year="{{ year }}"
+                  style="width:90px;padding:8px;background:var(--surface-hover);text-align:center;border-right:1px solid var(--border-soft);">
+                {{ month[5:7] }}
+              </th>
+            {% endfor %}
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr style="border-bottom:1px solid var(--border-soft);">
+          <td style="position:sticky;left:0;background:var(--surface);z-index:1;font-weight:500;padding:8px;border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+              title="{{ r.counterparty }}">
+            {{ r.counterparty }}
+          </td>
+          {% for year in year_groups.keys()|sort %}
+            {% set year_total = 0 %}
+            {% for month in year_groups[year] %}
+              {% set amount = r.months.get(month, 0) %}
+              {% set year_total = year_total + amount %}
+              <td class="month-data month-{{ year }}" 
+                  data-year="{{ year }}" 
+                  style="color:var(--ink-muted);padding:8px;text-align:right;border-right:1px solid var(--border-soft);">
+                {% if amount > 0 %}
+                  {{ money(amount) }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+            {% endfor %}
+            <td class="year-data year-{{ year }}" 
+                data-year="{{ year }}"
+                style="display:none;background:var(--surface-hover);font-weight:600;color:var(--red);padding:8px;text-align:right;border-right:1px solid var(--border);">
+              {{ money(year_total) }}
+            </td>
+          {% endfor %}
+          <td style="background:var(--surface-hover);font-weight:600;color:var(--red);border-left:2px solid var(--border);padding:8px;text-align:right;">
+            {{ money(r.total) }}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="100">
+            <div class="empty-state"><p>{{ tr('Nema podataka za izabrane filtere.') }}</p></div>
+          </td>
+        </tr>
+        {% endfor %}
+        
+        {% if rows %}
+        <tr style="background:var(--surface-hover);font-weight:600;border-top:2px solid var(--border);">
+          <td style="position:sticky;left:0;background:var(--surface-hover);z-index:1;padding:8px;border-right:1px solid var(--border);">{{ tr('UKUPNO PO MESECU') }}</td>
+          {% for year in year_groups.keys()|sort %}
+            {% set year_total = 0 %}
+            {% for month in year_groups[year] %}
+              {% set year_total = year_total + month_totals.get(month, 0) %}
+              <td class="month-data month-{{ year }}" 
+                  data-year="{{ year }}" 
+                  style="color:var(--red);padding:8px;text-align:right;border-right:1px solid var(--border-soft);">
+                {{ money(month_totals.get(month, 0)) }}
+              </td>
+            {% endfor %}
+            <td class="year-data year-{{ year }}" 
+                data-year="{{ year }}"
+                style="display:none;color:var(--red);background:var(--surface-hover);font-size:1.05rem;padding:8px;text-align:right;border-right:1px solid var(--border);">
+              {{ money(year_total) }}
+            </td>
+          {% endfor %}
+          <td style="color:var(--red);font-size:1.05rem;border-left:2px solid var(--border);padding:8px;text-align:right;">
+            {{ money(total_spending) }}
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div><!-- end main col -->
+
+<!-- Sidebar -->
+<div>
+  <!-- Classification breakdown -->
+  {% if classification_counts %}
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Po klasifikaciji') }}</span></div>
+    <div class="card-body" style="padding:12px 16px;">
+      {% for c in classification_counts %}
+      <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border-soft);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-size:.82rem;font-weight:500;color:var(--ink);">{{ c.classification }}</span>
+          <span style="font-size:.75rem;color:var(--ink-muted);">{{ c.cnt }} tx</span>
+        </div>
+        <div style="font-size:.88rem;font-weight:600;color:var(--red);">
+          {{ money(c.total) }} RSD
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Quick info -->
+  <div class="card" style="margin-top:16px;">
+    <div class="card-header"><span class="card-title">{{ tr("Info") }}</span></div>
+    <div class="card-body" style="padding:12px 16px;font-size:.78rem;color:var(--ink-muted);">
+      <p style="margin-bottom:8px;">
+        <strong>{{ tr("Pivot tabela") }}</strong> {{ tr('prikazuje potrošnju po entitetima (counterparty) agregiranu po mesecima.') }}
+      </p>
+      <p style="margin-bottom:8px;">
+        {{ tr('Entiteti su sortirani po ukupnoj potrošnji (najviše → najmanje).') }}
+      </p>
+      <p style="margin-bottom:8px;">
+        <strong>{{ tr('Kliknite na godinu') }}</strong> {{ tr('u zaglavlju tabele da skupite/proširite mesece te godine.') }}
+      </p>
+      <p>
+        {{ tr('Za detaljnu listu transakcija kliknite "Transakcije (detalji)" gore desno.') }}
+      </p>
+    </div>
+  </div>
+</div><!-- end sidebar -->
+
+</div><!-- end grid -->
+
+<script>
+const yearStates = {};
+
+function toggleYear(year) {
+  const isCurrentlyExpanded = yearStates[year] !== false;
+  
+  if (isCurrentlyExpanded) {
+    collapseYear(year);
+  } else {
+    expandYear(year);
+  }
+}
+
+function collapseYear(year) {
+  yearStates[year] = false;
+  
+  // Hide expanded year header (with colspan)
+  document.querySelectorAll(`.year-header-expanded.year-header-${year}`).forEach(el => {
+    el.style.display = 'none';
+  });
+  
+  // Show collapsed year header (with rowspan=2)
+  document.querySelectorAll(`.year-header-collapsed.year-header-${year}`).forEach(el => {
+    el.style.display = 'table-cell';
+  });
+  
+  // Hide month headers and month data
+  document.querySelectorAll(`.month-${year}`).forEach(el => {
+    el.style.display = 'none';
+  });
+  
+  // Show year total data
+  document.querySelectorAll(`.year-${year}`).forEach(el => {
+    el.style.display = 'table-cell';
+  });
+}
+
+function expandYear(year) {
+  yearStates[year] = true;
+  
+  // Show expanded year header (with colspan)
+  document.querySelectorAll(`.year-header-expanded.year-header-${year}`).forEach(el => {
+    el.style.display = 'table-cell';
+  });
+  
+  // Hide collapsed year header (with rowspan=2)
+  document.querySelectorAll(`.year-header-collapsed.year-header-${year}`).forEach(el => {
+    el.style.display = 'none';
+  });
+  
+  // Show month headers and month data
+  document.querySelectorAll(`.month-${year}`).forEach(el => {
+    el.style.display = 'table-cell';
+  });
+  
+  // Hide year total data
+  document.querySelectorAll(`.year-${year}`).forEach(el => {
+    el.style.display = 'none';
+  });
+}
+
+function collapseAllYears() {
+  document.querySelectorAll('.year-header-expanded').forEach(header => {
+    const year = header.getAttribute('data-year');
+    if (year) collapseYear(year);
+  });
+}
+
+function expandAllYears() {
+  document.querySelectorAll('.year-header-collapsed').forEach(header => {
+    const year = header.getAttribute('data-year');
+    if (year) expandYear(year);
+  });
+}
+</script>
+
+{% endblock %}

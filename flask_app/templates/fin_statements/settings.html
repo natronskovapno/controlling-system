@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% from "fin_statements/_macros.html" import money, check_badge, note %}
+{% block title %}{{ tr('Finansijski izveštaji — Podešavanja') }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Podešavanja') }}</h1>
+    <p class="page-subtitle">{{ tr('Mapiranje konta na stavke izveštaja, parametri procena i jednokratna isključenja') }}</p>
+  </div>
+</div>
+
+{# ── 1. Test po bilansu ─────────────────────────────────────────── #}
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-header">
+    <span class="card-title">{{ tr('Provera mapiranja po bilansu') }}</span>
+    <form method="get" style="display:flex;gap:8px;align-items:center;">
+      <label for="snap-sel" class="text-muted" style="font-size:.82rem;">{{ tr('Bilans') }}</label>
+      <select id="snap-sel" name="snapshot" onchange="this.form.submit()" style="height:32px;">
+        {% for s in snaps %}
+          <option value="{{ s.id }}" {% if s.id == sel %}selected{% endif %}>{{ s.period_from }} → {{ s.period_to }}{% if s.is_closing %} {{ tr('(zaključni)') }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+  {% if not r %}
+  <div class="card-body"><p class="text-muted">{{ tr('Nema uvezenih bruto bilansa.') }} <a href="{{ url_for('fin_statements.snapshot_upload') }}">{{ tr("Uvezi →") }}</a></p></div>
+  {% else %}
+  <div class="card-body">
+    {% for n in r.notes %}{{ note(tr(n)) }}{% endfor %}
+    <div class="section-grid" style="grid-template-columns:1fr 1fr;gap:24px;align-items:start;">
+      <div>
+        <table class="data-table" style="font-size:.82rem;">
+          <thead><tr><th>{{ tr("Kontrola") }}</th><th>{{ tr('Rezultat') }}</th><th>{{ tr('Detalj') }}</th></tr></thead>
+          <tbody>{% for c in r.checks %}<tr><td>{{ tr(c.name) }}</td><td>{{ check_badge(c.ok) }}</td><td class="text-muted">{{ c.detail }}</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+      <div>
+        {% if r.estimates %}
+        <table class="data-table" style="font-size:.82rem;">
+          <thead><tr><th>{{ tr('Procena') }}</th><th class="text-right">{{ tr('Iznos') }}</th><th>{{ tr("Osnova") }}</th><th>{{ tr("Protivstavka") }}</th></tr></thead>
+          <tbody>{% for e in r.estimates %}<tr><td>{{ e.name }}</td><td class="text-right">{{ money(e.amount) }}</td><td class="text-muted">{{ e.basis }}</td><td class="text-muted">{{ e.offset }}</td></tr>{% endfor %}</tbody>
+        </table>
+        {% elif r.closing %}
+        <p class="text-muted" style="font-size:.84rem;">{{ tr('Zaključni bilans — bez procena. Rezultat se čita iz prometa klasa 5 i 6.') }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="section-grid" style="grid-template-columns:1fr 1fr;gap:24px;align-items:start;margin-top:20px;">
+      {% for side, title, total in [('A', tr('Aktiva'), r.aktiva), ('P', tr('Pasiva'), r.pasiva)] %}
+      <table class="data-table" style="font-size:.82rem;">
+        <thead><tr><th>{{ title }}</th><th class="text-right">{{ tr('Iznos') }}</th><th class="text-right">{{ tr('od toga procena') }}</th></tr></thead>
+        <tbody>
+        {% for k, st, label, grp in lines if st == 'BS' and k.startswith(side ~ '_') %}
+          <tr><td>{{ tr(label) }}</td><td class="text-right">{{ money(r['values'][k]) }}</td>
+              <td class="text-right text-muted">{{ money(r.estimated[k]) }}</td></tr>
+        {% endfor %}
+          <tr><td><strong>{{ tr('Ukupno') }}</strong></td><td class="text-right"><strong>{{ money(total) }}</strong></td><td></td></tr>
+        </tbody>
+      </table>
+      {% endfor %}
+    </div>
+
+    <div class="section-grid" style="grid-template-columns:1fr 1fr;gap:24px;align-items:start;margin-top:20px;">
+      <table class="data-table" style="font-size:.82rem;">
+        <thead><tr><th>{{ tr('Bilans uspeha') }}</th><th class="text-right">{{ tr('Iznos') }}</th><th class="text-right">{{ tr('od toga procena') }}</th></tr></thead>
+        <tbody>
+        {% for k, st, label, grp in lines if st == 'IS' %}
+          <tr><td>{% if k.startswith('R_') %}− {% endif %}{{ tr(label) }}</td><td class="text-right">{{ money(r['values'][k]) }}</td>
+              <td class="text-right text-muted">{{ money(r.estimated[k]) }}</td></tr>
+        {% endfor %}
+          <tr><td><strong>{{ tr('Poslovni rezultat') }}</strong></td><td class="text-right"><strong>{{ money(r.income.posl_rezultat) }}</strong></td><td></td></tr>
+          <tr><td><strong>{{ tr('Rezultat pre oporezivanja') }}</strong></td><td class="text-right"><strong>{{ money(r.income.ebt) }}</strong></td><td></td></tr>
+          <tr><td>{{ tr('− Porez na dobit') }}</td><td class="text-right">{{ money(r.income.tax) }}</td><td class="text-right text-muted">{% if not r.closing %}{{ money(r.income.tax) }}{% endif %}</td></tr>
+          <tr><td><strong>{{ tr('Neto rezultat') }}</strong></td><td class="text-right"><strong>{{ money(r.income.net) }}</strong></td><td></td></tr>
+          <tr><td>EBITDA</td><td class="text-right">{{ money(r.income.ebitda) }}</td><td></td></tr>
+        </tbody>
+      </table>
+      <div>
+        <p style="font-size:.84rem;margin-bottom:8px;"><strong>{{ tr('Konta mapirana samo po klasi') }}</strong> <span class="text-muted">{{ tr('— proverite da li su na pravoj stavci') }}</span></p>
+        {% if r.class_only or r.unmapped %}
+        <table class="data-table" style="font-size:.82rem;">
+          <thead><tr><th>{{ tr('Konto') }}</th><th>{{ tr('Naziv') }}</th><th class="text-right">{{ tr('Saldo') }}</th><th>{{ tr("Trenutno") }}</th><th>{{ tr('Mapiraj na') }}</th></tr></thead>
+          <tbody>
+          {% for c in r.unmapped + r.class_only %}
+            <tr>
+              <td>{{ c.konto }}</td><td>{{ c.naziv or '—' }}</td><td class="text-right">{{ money(c.saldo) }}</td>
+              <td class="text-muted">{{ c.line or 'nemapirano' }}</td>
+              <td>
+                <form method="post" action="{{ url_for('fin_statements.mapping_save') }}" style="display:flex;gap:4px;">
+                  <input type="hidden" name="snapshot" value="{{ sel }}">
+                  <input name="konto_prefix" value="{{ c.konto }}" style="width:70px;height:28px;" aria-label="{{ tr('Konto prefiks') }}">
+                  <select name="report_line" style="height:28px;max-width:180px;" aria-label="{{ tr('Stavka') }}">
+                    {% for k, st, label, grp in lines %}<option value="{{ k }}" {% if k == c.line %}selected{% endif %}>{{ tr(label) }}</option>{% endfor %}
+                    <option value="{{ EXCLUDE }}">{{ tr('Isključeno') }}</option>
+                  </select>
+                  <button type="submit" class="btn btn-secondary btn-sm">OK</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted" style="font-size:.84rem;">{{ tr('Sva konta su mapirana na konkretnu stavku.') }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{# ── 2. Mapiranje ───────────────────────────────────────────────── #}
+<div class="card" id="mapiranje" style="margin-bottom:24px;">
+  <div class="card-header">
+    <span class="card-title">{{ tr('Mapiranje konta') }}</span>
+    <span class="text-muted" style="font-size:.78rem;">{{ tr('Primenjuje se najduži odgovarajući prefiks konta') }}</span>
+  </div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('fin_statements.mapping_save') }}" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap;">
+      <div class="form-group" style="margin:0;"><label for="m-prefix">{{ tr('Konto / prefiks') }}</label><input id="m-prefix" name="konto_prefix" placeholder="{{ tr('npr. 4292') }}" style="width:110px;"></div>
+      <div class="form-group" style="margin:0;"><label for="m-line">{{ tr('Stavka izveštaja') }}</label>
+        <select id="m-line" name="report_line">
+          {% for k, st, label, grp in lines %}<option value="{{ k }}">{{ 'BS' if st == 'BS' else 'BU' }} · {{ tr(label) }}</option>{% endfor %}
+          <option value="{{ EXCLUDE }}">{{ tr('Isključeno (zaključna knjiženja)') }}</option>
+        </select></div>
+      <div class="form-group" style="margin:0;flex-grow:1;"><label for="m-note">{{ tr('Napomena') }}</label><input id="m-note" name="note" style="width:100%;"></div>
+      <button type="submit" class="btn btn-primary btn-sm">{{ tr('Sačuvaj') }}</button>
+    </form>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table" style="font-size:.82rem;">
+      <thead><tr><th>{{ tr("Prefiks") }}</th><th>{{ tr('Stavka') }}</th><th class="text-right">{{ tr('Konta u bilansima') }}</th><th>{{ tr('Napomena') }}</th><th></th></tr></thead>
+      <tbody>{% for m in mapping %}
+        <tr>
+          <td><strong>{{ m.konto_prefix }}</strong>{% if m.konto_prefix|length == 1 %} <span class="badge badge-gray">{{ tr("klasa") }}</span>{% endif %}</td>
+          <td>{{ tr(m.label) }}</td><td class="text-right">{{ m.used or '—' }}</td><td class="text-muted">{{ tr(m.note) if m.note else '' }}</td>
+          <td class="text-right">
+            <form method="post" action="{{ url_for('fin_statements.mapping_delete', mid=m.id) }}" onsubmit="return confirm('Obrisati mapiranje {{ m.konto_prefix }}?');" style="display:inline;">
+              <button type="submit" class="btn btn-secondary btn-sm">{{ tr('Obriši') }}</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}</tbody>
+    </table>
+  </div>
+</div>
+
+{# ── 2b. Bankovni računi ────────────────────────────────────────── #}
+<div class="card" id="racuni" style="margin-bottom:24px;">
+  <div class="card-header"><span class="card-title">{{ tr('Povezivanje konta gotovine sa bankovnim računima') }}</span>
+    <span class="text-muted" style="font-size:.78rem;">{{ tr('Za kontrolu gotovine: saldo konta naspram stanja po izvodu') }}</span></div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('fin_statements.cash_link_save') }}" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
+      <div class="form-group" style="margin:0;"><label for="c-konto">{{ tr('Konto') }}</label>
+        <select id="c-konto" name="konto">{% for k in cash_kontos %}<option>{{ k }}</option>{% endfor %}</select></div>
+      <div class="form-group" style="margin:0;"><label for="c-acc">{{ tr('Račun (izvodi)') }}</label>
+        <select id="c-acc" name="account_number">{% for a in bank_accounts %}<option>{{ a }}</option>{% endfor %}</select></div>
+      <div class="form-group" style="margin:0;flex-grow:1;"><label for="c-note">{{ tr('Naziv') }}</label><input id="c-note" name="note" style="width:100%;"></div>
+      <button type="submit" class="btn btn-primary btn-sm">{{ tr('Poveži') }}</button>
+    </form>
+    <table class="data-table" style="font-size:.82rem;">
+      <thead><tr><th>{{ tr('Konto') }}</th><th>{{ tr('Račun') }}</th><th>{{ tr('Naziv') }}</th><th></th></tr></thead>
+      <tbody>{% for c in cash_links %}
+        <tr><td>{{ c.konto }}</td><td>{{ c.account_number }}</td><td class="text-muted">{{ tr(c.note) if c.note else '' }}</td>
+          <td class="text-right"><form method="post" action="{{ url_for('fin_statements.cash_link_delete', konto=c.konto) }}" style="display:inline;"><button type="submit" class="btn btn-secondary btn-sm">{{ tr('Obriši') }}</button></form></td></tr>
+      {% endfor %}</tbody>
+    </table>
+  </div>
+</div>
+
+{# ── 3. Parametri ───────────────────────────────────────────────── #}
+<div class="section-grid" style="grid-template-columns:1fr 1fr;gap:24px;align-items:start;">
+  <div class="card" id="parametri">
+    <div class="card-header"><span class="card-title">{{ tr('Parametri procena') }}</span></div>
+    <div class="card-body">
+      {% if r and r.base %}
+        <p class="text-muted" style="font-size:.82rem;margin-bottom:12px;">
+          {{ tr("Osnova za izabrani bilans:") }} {% if r.base.base_snapshot %}{{ tr('zaključni') }} {{ r.base.base_snapshot.period_to }}{% else %}{{ tr("nema") }}{% endif %} ·
+          COGS {{ tr('stopa') }} {{ '%.2f'|format((r.base.cogs_ratio or 0) * 100) }}% ·
+          {{ tr('amortizacija godišnje') }} {{ money(r.base.depr_annual) }}
+        </p>
+      {% endif %}
+      <form method="post" action="{{ url_for('fin_statements.params_save') }}">
+        {% for p in params %}
+        <div class="form-group">
+          <label for="p-{{ p.key }}">{{ tr(p.note) }}</label>
+          <input id="p-{{ p.key }}" name="{{ p.key }}" value="{{ p.value or '' }}" placeholder="{{ tr('automatski') }}" style="width:180px;">
+        </div>
+        {% endfor %}
+        <button type="submit" class="btn btn-primary btn-sm">{{ tr('Sačuvaj parametre') }}</button>
+      </form>
+    </div>
+  </div>
+
+  {# ── 4. Isključenja ───────────────────────────────────────────── #}
+  <div class="card" id="iskljucenja">
+    <div class="card-header"><span class="card-title">{{ tr('Jednokratna isključenja') }}</span></div>
+    <div class="card-body">
+      <p class="text-muted" style="font-size:.82rem;margin-bottom:12px;">{{ tr('Iznosi iz zaključnog bilansa koji se ne koriste za računanje stopa (npr. ispravke prethodnog knjigovođe).') }}</p>
+      <form method="post" action="{{ url_for('fin_statements.exclusion_add') }}" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
+        <div class="form-group" style="margin:0;"><label for="x-year">{{ tr('Godina') }}</label><input id="x-year" name="year" style="width:70px;" value="2025"></div>
+        <div class="form-group" style="margin:0;"><label for="x-konto">{{ tr('Konto') }}</label><input id="x-konto" name="konto" style="width:80px;"></div>
+        <div class="form-group" style="margin:0;"><label for="x-amount">{{ tr('Iznos') }}</label><input id="x-amount" name="amount" style="width:120px;"></div>
+        <div class="form-group" style="margin:0;flex-grow:1;"><label for="x-reason">{{ tr('Razlog') }}</label><input id="x-reason" name="reason" style="width:100%;"></div>
+        <button type="submit" class="btn btn-primary btn-sm">{{ tr('Dodaj') }}</button>
+      </form>
+      {% if exclusions %}
+      <table class="data-table" style="font-size:.82rem;">
+        <thead><tr><th>{{ tr('Godina') }}</th><th>{{ tr('Konto') }}</th><th class="text-right">{{ tr('Iznos') }}</th><th>{{ tr('Razlog') }}</th><th></th></tr></thead>
+        <tbody>{% for x in exclusions %}
+          <tr><td>{{ x.year }}</td><td>{{ x.konto }}</td><td class="text-right">{{ money(x.amount) }}</td><td class="text-muted">{{ x.reason or '' }}</td>
+            <td class="text-right"><form method="post" action="{{ url_for('fin_statements.exclusion_delete', eid=x.id) }}" style="display:inline;"><button type="submit" class="btn btn-secondary btn-sm">{{ tr('Obriši') }}</button></form></td></tr>
+        {% endfor %}</tbody>
+      </table>
+      {% else %}<p class="text-muted" style="font-size:.84rem;">{{ tr('Nema isključenja.') }}</p>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

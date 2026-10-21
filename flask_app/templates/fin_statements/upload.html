@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Bruto bilans — Uvoz') }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Uvoz bruto bilansa') }}</h1>
+    <p class="page-subtitle">{{ tr('PDF ili XLSX iz knjigovodstvenog programa — period se prepoznaje automatski') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('fin_statements.snapshots') }}" class="btn btn-secondary btn-sm">{{ tr('← Nazad') }}</a>
+  </div>
+</div>
+<div class="section-grid" style="grid-template-columns:1fr 340px;gap:24px;align-items:start;">
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Izaberi fajl') }}</span></div>
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data">
+        <div class="form-group" style="margin-bottom:20px;">
+          <label for="bb-file">{{ tr('Bruto bilans (.pdf, .xlsx)') }}</label>
+          <input id="bb-file" type="file" name="file" accept=".pdf,.xlsx,.xlsm"
+                 style="width:100%;padding:10px 12px;border:2px dashed var(--border);border-radius:var(--r-md);background:var(--canvas);cursor:pointer;">
+        </div>
+        <button type="submit" class="btn btn-primary">{{ tr('Učitaj i pregledaj') }}</button>
+        <p class="text-muted" style="font-size:.78rem;margin-top:12px;">
+          {{ tr('Podaci') }} <strong>{{ tr('neće biti upisani') }}</strong> {{ tr('dok ne potvrdite na sledećem ekranu.') }}
+        </p>
+      </form>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr("Kontrole pri uvozu") }}</span></div>
+    <div class="card-body" style="font-size:.84rem;">
+      <p class="text-muted">{{ tr('Zbir analitičkih konta mora se slagati sa zbirovima po klasama i redom UKUPNO.') }}</p>
+      <p class="text-muted" style="margin-top:10px;">{{ tr('Bilans za isti period zamenjuje prethodno uvezeni.') }}</p>
+      <p class="text-muted" style="margin-top:10px;">{{ tr('Zaključni (godišnji) bilans se prepoznaje po zaključnim knjiženjima (klasa 7, 599/699).') }}</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

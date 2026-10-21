@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Prodaja') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != '' -%}
+    {{ "{:,.0f}".format(val | float).replace(",", ".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% macro pct(part, total) %}
+  {%- if total and total > 0 -%}
+    {{ "{:.1f}".format(part / total * 100) }}%
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Prodaja') }}</h1>
+    <p class="page-subtitle">{{ tr('POS — prihodi od prodatih stavki po satu, lokaciji i kategoriji (bez paušalnih naknada za događaje)') }}</p>
+  </div>
+</div>
+
+<!-- Filter bar -->
+<form method="get">
+<div class="filter-bar">
+  <div class="form-group">
+    <label>{{ tr('Od datuma') }}</label>
+    <input type="date" name="date_from" value="{{ filters.date_from }}">
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Do datuma') }}</label>
+    <input type="date" name="date_to" value="{{ filters.date_to }}">
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Lokacija') }}</label>
+    <select name="venue">
+      <option value="">{{ tr('Sve') }}</option>
+      {% for v in venues %}
+        <option value="{{ v }}" {{ 'selected' if filters.venue == v }}>{{ v }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Kategorija') }}</label>
+    <select name="category">
+      <option value="">{{ tr('Sve') }}</option>
+      {% for c in cats %}
+        <option value="{{ c.category_id }}" {{ 'selected' if filters.category == c.category_id|string }}>
+          {{ c.name or ('Kat. ' ~ c.category_id) }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Grupiši po') }}</label>
+    <select name="group_by">
+      <option value="day"      {{ 'selected' if filters.group_by == 'day' }}>{{ tr('Dan') }}</option>
+      <option value="month"    {{ 'selected' if filters.group_by == 'month' }}>{{ tr('Mesec') }}</option>
+      <option value="year"     {{ 'selected' if filters.group_by == 'year' }}>{{ tr('Godina') }}</option>
+      <option value="venue"    {{ 'selected' if filters.group_by == 'venue' }}>{{ tr('Lokacija') }}</option>
+      <option value="hour"     {{ 'selected' if filters.group_by == 'hour' }}>{{ tr('Sat') }}</option>
+      <option value="category" {{ 'selected' if filters.group_by == 'category' }}>{{ tr('Kategorija') }}</option>
+      <option value="product"  {{ 'selected' if filters.group_by == 'product' }}>{{ tr('Proizvod (top 100)') }}</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>&nbsp;</label>
+    <div style="display:flex;gap:6px;">
+      <button type="submit" class="btn btn-primary btn-sm">{{ tr('Primeni') }}</button>
+      <a href="{{ url_for('sales.index') }}" class="btn btn-ghost btn-sm">{{ tr('Reset') }}</a>
+    </div>
+  </div>
+</div>
+</form>
+
+<!-- KPI cards -->
+<div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom:20px;">
+
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Bruto prihod') }}</div>
+    <div class="kpi-card__value" style="font-size:1.6rem;">
+      {{ money(kpi.total_gross) }}<span class="kpi-card__unit">RSD</span>
+    </div>
+    <div class="kpi-card__sub">{{ tr('POS, sa PDV-om (samo stavke)') }}</div>
+  </div>
+
+  <div class="kpi-card kpi-card--green">
+    <div class="kpi-card__label">{{ tr('Neto prihod') }}</div>
+    <div class="kpi-card__value" style="font-size:1.6rem;">
+      {{ money(kpi.total_net) }}<span class="kpi-card__unit">RSD</span>
+    </div>
+    <div class="kpi-card__sub">{{ tr('Bez PDV-a') }}</div>
+  </div>
+
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Količina') }}</div>
+    <div class="kpi-card__value" style="font-size:1.6rem;">{{ money(kpi.total_qty) }}</div>
+    <div class="kpi-card__sub">{{ tr('Prodanih stavki') }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-card__label">{{ tr('Dana u periodu') }}</div>
+    <div class="kpi-card__value" style="font-size:1.6rem;">{{ kpi.total_days or '—' }}</div>
+    <div class="kpi-card__sub">{{ tr('Broj dana sa prometom') }}</div>
+  </div>
+
+</div>
+
+<div class="section-grid" style="grid-template-columns: 1fr 280px; gap:20px;">
+
+  <!-- Main table -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">
+        {% if filters.group_by == 'year' %}{{ tr('Po godini') }}
+        {% elif filters.group_by == 'month' %}{{ tr('Po mesecu') }}
+        {% elif filters.group_by == 'venue' %}{{ tr('Po lokaciji') }}
+        {% elif filters.group_by == 'hour' %}{{ tr('Po satu') }}
+        {% elif filters.group_by == 'category' %}{{ tr('Po kategoriji') }}
+        {% elif filters.group_by == 'product' %}{{ tr('Po proizvodu (top 100)') }}
+        {% else %}{{ tr('Po danu (poslednjih 200)') }}
+        {% endif %}
+      </span>
+      <span class="badge badge-gray">{{ rows | length }} {{ tr("redova") }}</span>
+    </div>
+    
+    <!-- Fixed table with overflow scroll wrapper -->
+    <div style="overflow-x: auto;">
+      <table class="data-table" style="min-width: 800px; table-layout: fixed;">
+        <colgroup>
+          <col style="width: 180px;">
+          <col style="width: 160px;">
+          <col style="width: 160px;">
+          <col style="width: 120px;">
+          <col style="width: 180px;">
+        </colgroup>
+        <thead>
+          <tr>
+            <th data-sort="str" style="text-align: left;">
+              {% if filters.group_by == 'hour' %}{{ tr('Sat') }}
+              {% elif filters.group_by == 'category' %}{{ tr('Kategorija') }}
+              {% elif filters.group_by == 'product' %}{{ tr('Proizvod') }}
+              {% elif filters.group_by == 'month' %}{{ tr('Mesec') }}
+              {% elif filters.group_by == 'year' %}{{ tr('Godina') }}
+              {% elif filters.group_by == 'venue' %}{{ tr('Lokacija') }}
+              {% else %}{{ tr('Datum') }}{% endif %}
+            </th>
+            <th data-sort="num" style="text-align: right;">{{ tr('Bruto (RSD)') }}</th>
+            <th data-sort="num" style="text-align: right;">{{ tr('Neto (RSD)') }}</th>
+            <th data-sort="num" style="text-align: right;">{{ tr('Količina') }}</th>
+            <th data-sort="num" style="text-align: right;">{{ tr('% od ukupnog') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set total_gross = kpi.total_gross | float %}
+          {% for r in rows %}
+          <tr>
+            <td style="text-align: left;">
+              {% if filters.group_by == 'hour' %}
+                <span style="font-variant-numeric:tabular-nums;">{{ "%02d"|format(r.label|int) }}:00 – {{ "%02d"|format(r.label|int + 1) }}:00</span>
+              {% else %}
+                {{ r.label_sr }}
+              {% endif %}
+            </td>
+            <td class="num" style="text-align: right;">{{ money(r.gross) }}</td>
+            <td class="num text-muted" style="text-align: right;">{{ money(r.net) }}</td>
+            <td class="num" style="text-align: right;">{{ money(r.qty) }}</td>
+            <td class="num" style="text-align: right;">
+              <div style="display:flex; align-items:center; gap:8px; justify-content:flex-end;">
+                <span style="font-size:.8rem; color:var(--ink-muted);">{{ pct(r.gross|float, total_gross) }}</span>
+                <div style="width:60px; height:4px; background:var(--canvas-mid); border-radius:2px; overflow:hidden;">
+                  <div style="width:{{ [(r.gross|float / total_gross * 100) if total_gross else 0, 100]|min }}%; height:100%; background:var(--accent); border-radius:2px;"></div>
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" style="text-align: center;">
+              <div class="empty-state"><p>{{ tr('Nema podataka za izabrane filtere.') }}</p></div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Right sidebar -->
+  <div style="display:flex; flex-direction:column; gap:16px;">
+
+    <!-- Venue split -->
+    {% if venue_split %}
+    <div class="card">
+      <div class="card-header"><span class="card-title">{{ tr('Po lokaciji') }}</span></div>
+      <div class="card-body" style="padding:12px 16px;">
+        {% set vs_total = venue_split | sum(attribute='gross') %}
+        {% for vs in venue_split %}
+        <div style="margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; font-size:.82rem; margin-bottom:3px;">
+            <span style="font-weight:500;">{{ vs.venue }}</span>
+            <span class="text-muted">{{ pct(vs.gross|float, vs_total|float) }}</span>
+          </div>
+          <div style="height:6px; background:var(--canvas-mid); border-radius:3px; overflow:hidden;">
+            <div style="width:{{ [(vs.gross|float / vs_total|float * 100) if vs_total else 0, 100]|min }}%; height:100%;
+              background:{% if loop.index == 1 %}var(--accent){% else %}var(--blue){% endif %}; border-radius:3px;">
+            </div>
+          </div>
+          <div style="font-size:.78rem; color:var(--ink-muted); margin-top:2px;">{{ money(vs.gross) }} RSD</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Top 10 products -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">{{ tr('Top 10 proizvoda') }}</span></div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>{{ tr('Proizvod') }}</th>
+              <th class="text-right">{{ tr('Bruto') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in top_products %}
+            <tr>
+              <td style="font-size:.8rem;">{{ p.product_name }}</td>
+              <td class="num" style="font-size:.8rem;">{{ money(p.gross) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="2" class="text-muted text-center" style="padding:12px;">—</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

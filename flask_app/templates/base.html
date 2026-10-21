@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Garden Stage{% endblock %} — Controlling</title>
+
+  <!-- Google Fonts: DM Serif Display + DM Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}" />
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════
+       SIDEBAR NAVIGATION
+  ════════════════════════════════════════════════════════ -->
+  <nav class="sidebar" id="sidebar">
+
+    <div class="sidebar-brand">
+      <a href="{{ url_for('index') }}" style="text-decoration:none;display:flex;align-items:center;gap:10px;color:inherit;">
+        <span class="brand-mark">GS</span>
+        <div class="brand-text">
+          <span class="brand-title">Garden Stage</span>
+          <span class="brand-sub">{{ tr('Garden Controlling') }}</span>
+        </div>
+      </a>
+    </div>
+
+    <div class="lang-switch">
+      {% for code, label in LANGUAGES.items() %}
+        <a href="{{ url_for('set_language', code=code) }}"
+           class="lang-option {% if current_lang == code %}active{% endif %}"
+           title="{{ label }}">{{ code|upper }}</a>
+      {% endfor %}
+    </div>
+
+
+    <div class="nav-section-label">{{ tr('Operativno') }}</div>
+    <ul class="nav-list">
+      <li>
+        <a href="{{ url_for('daily_log.index') }}"
+           class="nav-item {% if request.blueprint == 'daily_log' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3" y="4" width="14" height="13" rx="2"/>
+            <path d="M7 2v4M13 2v4M3 9h14"/>
+          </svg>
+          {{ tr("Daily Log") }}
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('cash.index') }}"
+           class="nav-item {% if request.blueprint == 'cash' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="10" cy="10" r="7"/>
+            <path d="M10 6.5v1.25m0 4.5v1.25m-2-3.75c0-.69.9-1.25 2-1.25s2 .56 2 1.25-.9 1.25-2 1.25-2 .56-2 1.25.9 1.25 2 1.25 2-.56 2-1.25"/>
+          </svg>
+          {{ tr("Cash Position") }}
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('sales.index') }}"
+           class="nav-item {% if request.blueprint == 'sales' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M3 14l4-5 3 3 3-4 4 5"/>
+            <path d="M3 17h14"/>
+          </svg>
+          {{ tr('Prodaja') }}
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('projections.index') }}"
+           class="nav-item {% if request.blueprint == 'projections' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M3 17l4-4 3 3 7-7"/>
+            <circle cx="17" cy="6" r="1.5" fill="currentColor"/>
+          </svg>
+          {{ tr('Projekcije') }}
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('performance.index') }}"
+           class="nav-item {% if request.blueprint == 'performance' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M2 15l5-6 3 4 3-5 5 7"/>
+            <path d="M2 3h16"/>
+          </svg>
+          {{ tr('Pregled poslovanja') }}
+        </a>
+      </li>
+    </ul>
+
+    <div class="nav-section-label">{{ tr('Finansije') }}</div>
+    <ul class="nav-list">
+      <li>
+        <a href="{{ url_for('invoices.index') }}"
+           class="nav-item {% if request.blueprint == 'invoices' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M5 3h10a1 1 0 011 1v13l-2-1-2 1-2-1-2 1-2-1-2 1V4a1 1 0 011-1z"/>
+            <path d="M7 8h6M7 11h4"/>
+          </svg>
+          {{ tr('Fakture') }}
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('bank.index') }}"
+           class="nav-item {% if request.blueprint == 'bank' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M3 8l7-4 7 4v1H3V8z"/>
+            <rect x="5" y="9" width="2" height="5"/>
+            <rect x="9" y="9" width="2" height="5"/>
+            <rect x="13" y="9" width="2" height="5"/>
+            <path d="M3 14h14v2H3z"/>
+          </svg>
+          {{ tr('Izvodi') }}
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('fixed_costs.index') }}"
+           class="nav-item {% if request.blueprint == 'fixed_costs' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 4h12v2H4zM4 9h8v2H4zM4 14h5v2H4z"/>
+          </svg>
+          {{ tr('Fiksni troškovi') }}
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('pdv.index') }}"
+           class="nav-item {% if request.blueprint == 'pdv' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 4l12 12M15 5H5a1 1 0 00-1 1v3m16 5v3a1 1 0 01-1 1H5"/>
+            <circle cx="14" cy="7" r="2"/><circle cx="6" cy="13" r="2"/>
+          </svg>
+          {{ tr('PDV') }}
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('wages.index') }}"
+           class="nav-item {% if request.blueprint == 'wages' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="8" cy="7" r="3"/>
+            <path d="M2 17c0-3.3 2.7-6 6-6h1m5 1v6m-2-2h4"/>
+          </svg>
+          {{ tr('Zarade') }}
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('debit_cards.index') }}"
+           class="nav-item {% if request.blueprint == 'debit_cards' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="2" y="5" width="16" height="10" rx="2"/>
+            <path d="M2 9h16"/>
+            <rect x="5" y="12" width="3" height="1.5" rx="0.5"/>
+          </svg>
+          {{ tr('Kartice') }}
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('discounts.index') }}"
+           class="nav-item {% if request.blueprint == 'discounts' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M3 3l14 14"/>
+            <circle cx="6.5" cy="6.5" r="2.5"/>
+            <circle cx="13.5" cy="13.5" r="2.5"/>
+          </svg>
+          {{ tr('Popusti') }}
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('prenosi.index') }}"
+           class="nav-item {% if request.blueprint == 'prenosi' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 7h9m0 0l-3-3m3 3l-3 3"/>
+            <path d="M16 13H7m0 0l3-3m-3 3l3 3"/>
+          </svg>
+          {{ tr('Prenosi na racun') }}
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('inventory.index') }}"
+           class="nav-item {% if request.blueprint == 'inventory' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3" y="7" width="14" height="9" rx="1"/>
+            <path d="M3 10h14M7 7V5.5a1 1 0 011-1h4a1 1 0 011 1V7"/>
+          </svg>
+          {{ tr('Lager') }}
+        </a>
+      </li>
+    </ul>
+
+    <div class="nav-section-label">{{ tr('Finansijski izveštaji') }}</div>
+    <ul class="nav-list">
+      <li>
+        <a href="{{ url_for('fin_statements.statements') }}"
+           class="nav-item">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 3h9l3 3v11H4z"/><path d="M7 9h6M7 12h6M7 15h3"/>
+          </svg>
+          {{ tr('Izveštaji') }}
+        </a>
+      </li>
+{% if request.blueprint == 'fin_statements' %}
+      <li>
+        <a href="{{ url_for('fin_statements.statements') }}"
+           class="nav-item {% if request.endpoint and request.endpoint.startswith('fin_statements.statements') %}active{% endif %}" style="padding-left:44px;font-size:.82rem;">{{ tr('Bilans stanja i uspeha') }}</a>
+      </li>
+      <li>
+        <a href="{{ url_for('fin_statements.periods') }}"
+           class="nav-item {% if request.endpoint and request.endpoint.startswith('fin_statements.periods') %}active{% endif %}" style="padding-left:60px;font-size:.78rem;">{{ tr('↳ Po periodima i mesecima') }}</a>
+      </li>
+      <li>
+        <a href="{{ url_for('fin_statements.cashflow') }}"
+           class="nav-item {% if request.endpoint and request.endpoint.startswith('fin_statements.cashflow') %}active{% endif %}" style="padding-left:44px;font-size:.82rem;">{{ tr('Tokovi gotovine') }}</a>
+      </li>
+      <li>
+        <a href="{{ url_for('fin_statements.reconciliation') }}"
+           class="nav-item {% if request.endpoint and request.endpoint.startswith('fin_statements.reconciliation') %}active{% endif %}" style="padding-left:44px;font-size:.82rem;">{{ tr('Usaglašavanje') }}</a>
+      </li>
+      <li>
+        <a href="{{ url_for('fin_statements.snapshots') }}"
+           class="nav-item {% if request.endpoint and request.endpoint.startswith('fin_statements.snapshot') %}active{% endif %}" style="padding-left:44px;font-size:.82rem;">{{ tr('Bruto bilansi') }}</a>
+      </li>
+      <li>
+        <a href="{{ url_for('fin_statements.settings') }}"
+           class="nav-item {% if request.endpoint and request.endpoint.startswith('fin_statements.settings') %}active{% endif %}" style="padding-left:44px;font-size:.82rem;">{{ tr('Podešavanja') }}</a>
+      </li>
+{% endif %}
+    </ul>
+
+    <div class="nav-section-label">{{ tr('Entiteti') }}</div>
+    <ul class="nav-list">
+      <li>
+        <a href="{{ url_for('brewery.index') }}"
+           class="nav-item {% if request.blueprint == 'brewery' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M7 3h6l1 4H6L7 3z"/>
+            <path d="M6 7v9a1 1 0 001 1h6a1 1 0 001-1V7"/>
+            <path d="M9 11v3m2-3v3"/>
+          </svg>
+          Small Brewery
+        </a>
+      </li>
+    </ul>
+
+    <div class="nav-section-label">{{ tr('Sistem') }}</div>
+    <ul class="nav-list">
+      <li>
+        <a href="{{ url_for('event_type_analysis.index') }}"
+           class="nav-item {% if request.blueprint == 'event_type_analysis' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="2" y="3" width="7" height="5" rx="1"/>
+            <rect x="11" y="3" width="7" height="5" rx="1"/>
+            <rect x="2" y="10" width="7" height="5" rx="1"/>
+            <rect x="11" y="10" width="7" height="5" rx="1"/>
+          </svg>
+          {{ tr('Analiza po tipu') }}
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('ingestion.index') }}"
+           class="nav-item {% if request.blueprint == 'ingestion' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M10 3v10m0 0l-3-3m3 3l3-3"/>
+            <path d="M4 14v2a1 1 0 001 1h10a1 1 0 001-1v-2"/>
+          </svg>
+          {{ tr("Ingestion") }}
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('checks.index') }}"
+           class="nav-item {% if request.blueprint == 'checks' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M7 10.5l2 2 4-4.5"/>
+            <circle cx="10" cy="10" r="7.25"/>
+          </svg>
+          {{ tr('Provere') }}
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('web_analytics.index') }}"
+           class="nav-item {% if request.blueprint == 'web_analytics' %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="10" cy="10" r="7.25"/>
+            <path d="M2.75 10h14.5M10 2.75c3.5 3.8 3.5 10.7 0 14.5-3.5-3.8-3.5-10.7 0-14.5z"/>
+          </svg>
+          {{ tr('Web analitika') }}
+        </a>
+      </li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <span class="db-status" id="db-status"
+            data-connected="{{ tr('● DB povezana') }}"
+            data-error="{{ tr('✕ DB greška') }}">{{ tr('● DB povezana') }}</span>
+
+      <div style="margin-top:12px;">
+        <button id="snapshot-btn"
+          onclick="triggerSnapshot()"
+          style="width:100%;padding:8px 10px;font-size:.75rem;font-weight:500;
+                 border:1px solid var(--border-soft);border-radius:var(--r-sm);
+                 background:var(--canvas-warm);color:var(--ink-muted);cursor:pointer;
+                 display:flex;align-items:center;gap:6px;justify-content:center;
+                 transition:background .15s,color .15s;margin-bottom:6px;"
+          onmouseover="this.style.background='var(--surface)';this.style.color='var(--ink)'"
+          onmouseout="this.style.background='var(--canvas-warm)';this.style.color='var(--ink-muted)'">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+               style="width:13px;height:13px;flex-shrink:0;">
+            <circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/>
+          </svg>
+          <span id="snapshot-label">{{ tr('Generiši snapshot') }}</span>
+        </button>
+        <div id="snapshot-status" style="font-size:.7rem;text-align:center;margin-bottom:8px;
+             color:var(--ink-muted);min-height:14px;"></div>
+      </div>
+
+      <div>
+        <button id="dump-btn"
+          onclick="triggerDump()"
+          style="width:100%;padding:8px 10px;font-size:.75rem;font-weight:500;
+                 border:1px solid var(--border-soft);border-radius:var(--r-sm);
+                 background:var(--canvas-warm);color:var(--ink-muted);cursor:pointer;
+                 display:flex;align-items:center;gap:6px;justify-content:center;
+                 transition:background .15s,color .15s;"
+          onmouseover="this.style.background='var(--surface)';this.style.color='var(--ink)'"
+          onmouseout="this.style.background='var(--canvas-warm)';this.style.color='var(--ink-muted)'">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+               style="width:13px;height:13px;flex-shrink:0;">
+            <path d="M8 1v9M4 6l4 4 4-4M2 12h12"/>
+          </svg>
+          <span id="dump-label">{{ tr('Dump za Claude') }}</span>
+        </button>
+        <div id="dump-status" style="font-size:.7rem;text-align:center;margin-top:5px;
+             color:var(--ink-muted);min-height:14px;"></div>
+      </div>
+    </div>
+
+    <script>
+    function triggerSnapshot() {
+      const btn    = document.getElementById("snapshot-btn");
+      const label  = document.getElementById("snapshot-label");
+      const status = document.getElementById("snapshot-status");
+
+      btn.disabled = true;
+      label.textContent = "Generisanje...";
+      status.textContent = "";
+
+      fetch("/api/generate-snapshot", { method: "POST" })
+        .then(r => r.json())
+        .then(data => {
+          label.textContent = "Generiši snapshot";
+          if (data.ok) {
+            status.textContent = "✓ " + data.duration + "s · " + (data.size || "");
+            status.style.color = "var(--green)";
+          } else {
+            status.textContent = "✗ " + (data.error || "Greška");
+            status.style.color = "var(--red)";
+          }
+          btn.disabled = false;
+          setTimeout(() => { status.textContent = ""; status.style.color = "var(--ink-muted)"; }, 10000);
+        })
+        .catch(() => {
+          label.textContent = "Generiši snapshot";
+          status.textContent = "✗ Greška";
+          status.style.color = "var(--red)";
+          btn.disabled = false;
+        });
+    }
+
+    function triggerDump() {
+      const btn   = document.getElementById("dump-btn");
+      const label = document.getElementById("dump-label");
+      const status = document.getElementById("dump-status");
+
+      btn.disabled = true;
+      label.textContent = "Dump u toku...";
+      status.textContent = "";
+
+      fetch("/api/db-dump", { method: "POST" })
+        .then(r => r.json())
+        .then(data => {
+          if (data.ok) {
+            label.textContent = "Dump za Claude";
+            status.textContent = data.tables + " tabela, " + data.duration + "s";
+            status.style.color = "var(--green)";
+          } else {
+            label.textContent = "Dump za Claude";
+            status.textContent = "✗ " + (data.error || "Greška");
+            status.style.color = "var(--red)";
+          }
+          btn.disabled = false;
+          setTimeout(() => { status.textContent = ""; status.style.color = "var(--ink-muted)"; }, 8000);
+        })
+        .catch(e => {
+          label.textContent = "Dump za Claude";
+          status.textContent = "✗ Greška";
+          status.style.color = "var(--red)";
+          btn.disabled = false;
+        });
+    }
+    </script>
+
+  </nav>
+
+  <!-- ═══════════════════════════════════════════════════
+       MAIN CONTENT
+  ════════════════════════════════════════════════════════ -->
+  <main class="main-content">
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-container">
+          {% for category, message in messages %}
+            <div class="flash flash--{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+
+  </main>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Uvoz deviznih izvoda — PDF') }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Uvoz deviznih izvoda iz PDF-a') }}</h1>
+    <p class="page-subtitle">{{ tr('Demo Bank — Izvod deviznog racuna (Fx Account Statement)') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('bank.fx_index') }}" class="btn btn-secondary btn-sm">{{ tr('← Nazad') }}</a>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 320px;gap:24px;align-items:start;">
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">{{ tr('Izaberi PDF fajlove') }}</span>
+    </div>
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data">
+        <div class="form-group" style="margin-bottom:20px;">
+          <label>{{ tr('Devizni izvodi (.pdf) — može više odjednom') }}</label>
+          <input type="file" name="files" accept=".pdf" multiple
+                 style="width:100%;padding:10px 12px;border:2px dashed var(--border);
+                        border-radius:var(--r-md);background:var(--canvas);cursor:pointer;">
+        </div>
+        <button type="submit" class="btn btn-primary">{{ tr("Učitaj i pregledaj") }}</button>
+        <p style="font-size:.78rem;color:var(--ink-muted);margin-top:12px;">
+          {{ tr('Podaci') }} <strong>{{ tr("nece biti upisani") }}</strong> {{ tr('dok ne potvrdite na sledecem ekranu.') }}
+        </p>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">{{ tr("Podrzani format") }}</span>
+    </div>
+    <div class="card-body" style="font-size:.84rem;line-height:1.65;">
+      <span class="badge badge-blue" style="margin-bottom:8px;">{{ tr("Demo Bank — Fx Account Statement") }}</span>
+      <p style="color:var(--ink-muted);margin-bottom:10px;">
+        {{ tr('Devizni racuni (EUR/USD) i RSD racuni za nerezidentni platni promet.') }}
+      </p>
+      <p style="color:var(--ink-muted);margin-bottom:6px;">{{ tr('Parser automatski cita:') }}</p>
+      <ul style="color:var(--ink-muted);padding-left:16px;margin:0;">
+        <li>{{ tr('Broj izvoda, datum, partiju, IBAN') }}</li>
+        <li>{{ tr('Valutu i podracun') }}</li>
+        <li>{{ tr('Pocetno/novo stanje') }}</li>
+        <li>{{ tr('Sve transakcije (duguje/potrazuje, RSD protivvrednost, datum, kurs, nalog/predmet br.)') }}</li>
+      </ul>
+      <p style="color:var(--ink-muted);margin-top:10px;">
+        {{ tr("Ovaj submodul je odvojen od automatske ingestion skripte — samo rucni upload, po dizajnu (retki fajlovi).") }}
+      </p>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

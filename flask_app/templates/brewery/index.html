@@ -1,0 +1,560 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Small Brewery / Brewery') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != '' and val|float != 0 -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% macro money_signed(val) %}
+  {%- if val is not none and val != '' -%}
+    {%- set f = val|float -%}
+    {%- if f > 0 -%}+{{ "{:,.0f}".format(f).replace(",",".") }}
+    {%- elif f < 0 -%}−{{ "{:,.0f}".format(f|abs).replace(",",".") }}
+    {%- else -%}—{%- endif -%}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% macro status_badge(s) %}
+  {%- if s == 'Paid' -%}<span class="badge badge-green">{{ tr('Plaćeno') }}</span>
+  {%- elif s == 'Partial' -%}<span class="badge badge-amber">{{ tr('Parcijalno') }}</span>
+  {%- else -%}<span class="badge badge-red">{{ tr('Neplaćeno') }}</span>
+  {%- endif -%}
+{% endmacro %}
+
+{% block content %}
+{% if not job_running %}
+<div class="card" style="margin-bottom:16px;border-left:3px solid var(--accent);" id="ingest_second_bank">
+  <div style="padding:12px 16px;">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="flex:1;">
+        <div style="font-size:.82rem;font-weight:600;color:var(--ink);">{{ tr('Uvoz podataka — Second Bank') }}</div>
+        <div style="font-size:.75rem;color:var(--ink-muted);margin-top:2px;">{{ tr('Uvozi Second Bank PDF izvode') }}</div>
+      </div>
+      <button id="btn_second_bank" class="btn btn-primary btn-sm"
+              onclick="startWidget_second_bank()" style="white-space:nowrap;">
+        {{ tr('▶ Pokreni uvoz') }}
+      </button>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:8px;">
+      <input type="text" id="path_second_bank"
+             placeholder="C:\controlling-system\data\Second Bank\statement.pdf"
+             style="font-size:.78rem;padding:4px 8px;flex:1;
+                    border:1px solid var(--border-soft);border-radius:var(--r-sm);
+                    background:var(--surface);">
+      <span style="font-size:.72rem;color:var(--ink-muted);">{{ tr('(paste putanju)') }}</span>
+    </div>
+    <div id="log_second_bank" style="display:none;margin-top:10px;padding:8px 10px;
+         background:#1a1a2e;color:#e2e8f0;font-family:monospace;font-size:.72rem;
+         border-radius:var(--r-sm);max-height:120px;overflow-y:auto;white-space:pre-wrap;"></div>
+  </div>
+</div>
+<script>
+(function(){
+  var _pt=null;
+  function _log(msg,run,code){
+    var el=document.getElementById('log_second_bank');
+    el.style.display='block'; el.textContent=msg;
+    var btn=document.getElementById('btn_second_bank');
+    if(run){ btn.disabled=true; btn.textContent='⏳ Uvoz u toku...'; }
+    else{
+      btn.disabled=false;
+      btn.textContent=(code===0)?'✓ Gotovo — pokreni ponovo':'▶ Pokreni uvoz';
+      if(code===0) el.style.color='#68d391';
+      else if(code!==null) el.style.color='#fc8181';
+    }
+  }
+  function _poll(id){
+    fetch('/ingestion/status/'+id).then(r=>r.json()).then(d=>{
+      _log(d.output||'',d.running,d.running?null:d.returncode);
+      if(d.running) _pt=setTimeout(()=>_poll(id),1200);
+    }).catch(e=>_log('Greška: '+e,false,-1));
+  }
+  window.startWidget_second_bank=function(){
+    if(_pt){clearTimeout(_pt);_pt=null;}
+    var body=new FormData();
+    body.append('step','second_bank');
+    var rawPath=document.getElementById('path_second_bank').value.trim().replace(/^["']+|["']+$/g,'');
+    if(!rawPath){alert('Unesite putanju do fajla ili foldera.');return;}
+    body.append('file_path',rawPath);
+    _log('Pokretanje...',true,null);
+    fetch('/ingestion/run',{method:'POST',body})
+      .then(r=>r.json()).then(d=>{
+        if(d.error){_log('Greška: '+d.error,false,-1);return;}
+        _poll(d.job_id);
+      }).catch(e=>_log('Greška: '+e,false,-1));
+  };
+})();
+</script>
+{% endif %}
+
+<style>
+.expand-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--ink-muted); font-size: .82rem; padding: 0 4px;
+  transition: transform .15s;
+}
+.expand-btn.open { transform: rotate(90deg); color: var(--accent); }
+.detail-rows { display: none; }
+.detail-rows.open { display: table-row-group; }
+.detail-row td {
+  background: var(--canvas-warm);
+  font-size: .78rem;
+  color: var(--ink-muted);
+  padding: 5px 14px 5px 32px !important;
+  border-bottom: 1px solid var(--border-soft);
+}
+.detail-row td.num { text-align: right; padding-right: 14px !important; }
+</style>
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Small Brewery / Brewery') }}</h1>
+    <p class="page-subtitle">{{ tr('Poseban pravni entitet — transakcije i fakture') }}</p>
+  </div>
+</div>
+
+<div style="display:flex;gap:8px;margin-bottom:20px;">
+  <a href="{{ url_for('brewery.index', tab='transakcije', date_from=date_from, date_to=date_to) }}"
+     class="btn {% if tab == 'transakcije' %}btn-primary{% else %}btn-secondary{% endif %}">
+    {{ tr('Transakcije') }}
+  </a>
+  <a href="{{ url_for('brewery.index', tab='fakture', date_from=date_from, date_to=date_to) }}"
+     class="btn {% if tab == 'fakture' %}btn-primary{% else %}btn-secondary{% endif %}">
+    {{ tr('Fakture') }}
+  </a>
+</div>
+
+<form method="get">
+  <input type="hidden" name="tab"      value="{{ tab }}">
+  <input type="hidden" name="tx_view"  value="{{ tx_view }}">
+  <input type="hidden" name="inv_view" value="{{ inv_view }}">
+  <div class="filter-bar" style="margin-bottom:24px;">
+    <div class="form-group">
+      <label>{{ tr('Od datuma') }}</label>
+      <input type="date" name="date_from" value="{{ date_from }}">
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Do datuma') }}</label>
+      <input type="date" name="date_to" value="{{ date_to }}">
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <div style="display:flex;gap:6px;">
+        <button type="submit" class="btn btn-primary btn-sm">{{ tr('Filtriraj') }}</button>
+        <a href="{{ url_for('brewery.index', tab=tab) }}" class="btn btn-ghost btn-sm">{{ tr('Reset') }}</a>
+      </div>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:flex-end;gap:6px;">
+      {% if tab == 'transakcije' %}
+      <a href="{{ url_for('brewery.index', tab='transakcije', date_from=date_from, date_to=date_to, tx_view='aggregated', inv_view=inv_view) }}"
+         class="btn btn-sm {% if tx_view == 'aggregated' %}btn-primary{% else %}btn-secondary{% endif %}">{{ tr('Zbrojeno') }}</a>
+      <a href="{{ url_for('brewery.index', tab='transakcije', date_from=date_from, date_to=date_to, tx_view='monthly', inv_view=inv_view) }}"
+         class="btn btn-sm {% if tx_view == 'monthly' %}btn-primary{% else %}btn-secondary{% endif %}">{{ tr('Mesečno') }}</a>
+      <a href="{{ url_for('brewery.index', tab='transakcije', date_from=date_from, date_to=date_to, tx_view='detailed', inv_view=inv_view) }}"
+         class="btn btn-sm {% if tx_view == 'detailed' %}btn-primary{% else %}btn-secondary{% endif %}">{{ tr('Detaljno') }}</a>
+      {% else %}
+      <a href="{{ url_for('brewery.index', tab='fakture', date_from=date_from, date_to=date_to, tx_view=tx_view, inv_view='aggregated') }}"
+         class="btn btn-sm {% if inv_view == 'aggregated' %}btn-primary{% else %}btn-secondary{% endif %}">{{ tr('Zbrojeno') }}</a>
+      <a href="{{ url_for('brewery.index', tab='fakture', date_from=date_from, date_to=date_to, tx_view=tx_view, inv_view='detailed') }}"
+         class="btn btn-sm {% if inv_view == 'detailed' %}btn-primary{% else %}btn-secondary{% endif %}">{{ tr('Detaljno') }}</a>
+      {% endif %}
+    </div>
+  </div>
+</form>
+
+{# ══════════════════════════════════════════════════════
+   TAB: TRANSAKCIJE
+══════════════════════════════════════════════════════ #}
+{% if tab == 'transakcije' %}
+
+<div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:28px;">
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Transakcija') }}</div>
+    <div class="kpi-card__value" style="font-size:1.9rem;">{{ tx_kpis.tx_count or 0 }}</div>
+    <div class="kpi-card__sub">{{ tx_kpis.date_min or '…' }} → {{ tx_kpis.date_max or '…' }}</div>
+  </div>
+  <div class="kpi-card kpi-card--green">
+    <div class="kpi-card__label">{{ tr('Ukupni prilivi') }}</div>
+    <div class="kpi-card__value text-positive" style="font-size:1.5rem;">{{ money(tx_kpis.total_in) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('operativni krediti') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--red">
+    <div class="kpi-card__label">{{ tr('Ukupni odlivi') }}</div>
+    <div class="kpi-card__value text-negative" style="font-size:1.5rem;">{{ money(tx_kpis.total_out) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('operativni debiti') }}</div>
+  </div>
+  <div class="kpi-card {% if (tx_kpis.total_in or 0) >= (tx_kpis.total_out or 0) %}kpi-card--green{% else %}kpi-card--red{% endif %}">
+    <div class="kpi-card__label">{{ tr('Neto pozicija') }}</div>
+    <div class="kpi-card__value {% if (tx_kpis.total_in or 0) >= (tx_kpis.total_out or 0) %}text-positive{% else %}text-negative{% endif %}" style="font-size:1.5rem;">
+      {{ money((tx_kpis.total_in or 0) - (tx_kpis.total_out or 0)) }}<span class="kpi-card__unit">RSD</span>
+    </div>
+    <div class="kpi-card__sub">{{ tr('bez internih prenosa') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Interni prenosi') }}</div>
+    <div class="kpi-card__value" style="font-size:1.1rem;line-height:1.3;">
+      <span style="color:var(--green);font-size:.95rem;">+{{ money(tx_kpis.int_in or 0) }}</span><br>
+      <span style="color:var(--red);font-size:.95rem;">−{{ money(tx_kpis.int_out or 0) }}</span>
+    </div>
+    <div class="kpi-card__sub">{{ tr('kapital · isključeno') }}</div>
+  </div>
+</div>
+
+{% if tx_view == 'monthly' %}
+{# ── Monthly ─────────────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">{{ tr('Mesečni pregled') }}</span>
+    <span class="badge badge-blue">{{ tx_monthly|length }} {{ tr("meseci") }}</span>
+  </div>
+  <div class="table-wrap">
+    {% if tx_monthly %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th data-sort="str">{{ tr('Mesec') }}</th>
+          <th data-sort="num" class="text-right">{{ tr('Prilivi') }}</th>
+          <th data-sort="num" class="text-right">Tx ↓</th>
+          <th data-sort="num" class="text-right">{{ tr('Odlivi') }}</th>
+          <th data-sort="num" class="text-right">Tx ↑</th>
+          <th data-sort="num" class="text-right">{{ tr('Neto') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in tx_monthly %}
+        <tr>
+          <td style="font-weight:600;white-space:nowrap;">{{ r.month }}</td>
+          <td class="num text-positive">+{{ money(r.total_in) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span></td>
+          <td class="num text-muted">{{ r.cnt_in }}</td>
+          <td class="num text-negative">−{{ money(r.total_out) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span></td>
+          <td class="num text-muted">{{ r.cnt_out }}</td>
+          <td class="num" style="font-weight:700;{% if r.net >= 0 %}color:var(--green){% else %}color:var(--red){% endif %};">
+            {{ money_signed(r.net) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        {% set tot_in  = tx_monthly | sum(attribute='total_in') %}
+        {% set tot_out = tx_monthly | sum(attribute='total_out') %}
+        {% set tot_net = tot_in - tot_out %}
+        <tr style="background:var(--canvas-warm);">
+          <td style="font-weight:600;padding:10px 14px;">{{ tr('Ukupno') }}</td>
+          <td class="num" style="font-weight:700;padding:10px 14px;color:var(--green);">+{{ money(tot_in) }} RSD</td>
+          <td></td>
+          <td class="num" style="font-weight:700;padding:10px 14px;color:var(--red);">−{{ money(tot_out) }} RSD</td>
+          <td></td>
+          <td class="num" style="font-weight:700;padding:10px 14px;{% if tot_net >= 0 %}color:var(--green){% else %}color:var(--red){% endif %};">
+            {{ money_signed(tot_net) }} RSD
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+    {% else %}
+    <div class="empty-state"><p>{{ tr('Nema podataka za izabrani period.') }}</p></div>
+    {% endif %}
+  </div>
+</div>
+
+{% elif tx_view == 'aggregated' %}
+{# ── Aggregated with expandable rows ─────────────────────────── #}
+
+{# Macro: renders one aggregated table (inflows or outflows) #}
+{% macro tx_agg_table(rows, detail_map, direction) %}
+{% set is_credit = direction == 'credit' %}
+{% set sign      = '+' if is_credit else '−' %}
+{% set color     = 'text-positive' if is_credit else 'text-negative' %}
+<table class="data-table">
+  <thead>
+    <tr>
+      <th style="width:28px;"></th>
+      <th data-sort="str">{{ tr('Kontrastrana') }}</th>
+      <th data-sort="num" class="text-right">{{ tr('Br. tx') }}</th>
+      <th data-sort="date">{{ tr('Prva') }}</th>
+      <th data-sort="date">{{ tr('Poslednja') }}</th>
+      <th data-sort="num" class="text-right">{{ tr('Ukupno') }}</th>
+    </tr>
+  </thead>
+  {% for r in rows %}
+  {% set uid = loop.index | string %}
+  {% set detail = detail_map.get(r.counterparty, []) %}
+  <tbody>
+    <tr style="cursor:{% if detail|length > 1 %}pointer{% else %}default{% endif %};"
+        {% if detail|length > 1 %}onclick="toggleDetail('{{ uid }}')"{% endif %}>
+      <td style="padding:0 0 0 10px;">
+        {% if detail|length > 1 %}
+        <button class="expand-btn" id="btn-{{ uid }}" onclick="event.stopPropagation();toggleDetail('{{ uid }}')">▶</button>
+        {% endif %}
+      </td>
+      <td style="font-size:.84rem;font-weight:500;">{{ tr(r.counterparty) }}</td>
+      <td class="num text-muted">{{ r.tx_count }}</td>
+      <td class="text-muted" style="font-size:.82rem;white-space:nowrap;">{{ r.first_date }}</td>
+      <td class="text-muted" style="font-size:.82rem;white-space:nowrap;">{{ r.last_date }}</td>
+      <td class="num {{ color }}" style="font-weight:600;">
+        {{ sign }}{{ money(r.total_amount) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+      </td>
+    </tr>
+  </tbody>
+  <tbody class="detail-rows" id="detail-{{ uid }}">
+    {% for d in detail %}
+    <tr class="detail-row">
+      <td></td>
+      <td style="font-size:.76rem;color:var(--ink-muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+          title="{{ d.raw_cp or '' }}">{{ d.raw_cp or '—' }}</td>
+      <td class="text-muted" style="font-size:.76rem;white-space:nowrap;">{{ d.date }}</td>
+      <td class="text-muted" style="font-size:.76rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+          colspan="1" title="{{ d.purpose or '' }}">{{ d.purpose or '—' }}</td>
+      <td></td>
+      <td class="num {{ color }}" style="font-size:.82rem;">
+        {{ sign }}{{ money(d.amount) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endfor %}
+  <tfoot>
+    <tr style="background:var(--canvas-warm);">
+      <td></td>
+      <td colspan="4" style="font-weight:600;padding:10px 14px;">{{ tr('Ukupno') }}</td>
+      <td class="num" style="font-weight:700;padding:10px 14px;{% if is_credit %}color:var(--green){% else %}color:var(--red){% endif %};">
+        {{ sign }}{{ money(rows | sum(attribute='total_amount')) }} RSD
+      </td>
+    </tr>
+  </tfoot>
+</table>
+{% endmacro %}
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <span class="card-title" style="color:var(--green);">{{ tr('↓ Prilivi') }}</span>
+    <span class="badge badge-green">{{ tx_inflows|length }} {{ tr("kontrastrana ·") }} {{ money(tx_inflow_total) }} RSD</span>
+  </div>
+  <div class="table-wrap">
+    {% if tx_inflows %}
+      {{ tx_agg_table(tx_inflows, tx_inflows_detail, 'credit') }}
+    {% else %}
+    <div class="empty-state"><p>{{ tr('Nema prihoda za izabrani period.') }}</p></div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title" style="color:var(--red);">{{ tr('↑ Odlivi') }}</span>
+    <span class="badge badge-red">{{ tx_outflows|length }} {{ tr("kontrastrana ·") }} {{ money(tx_outflow_total) }} RSD</span>
+  </div>
+  <div class="table-wrap">
+    {% if tx_outflows %}
+      {{ tx_agg_table(tx_outflows, tx_outflows_detail, 'debit') }}
+    {% else %}
+    <div class="empty-state"><p>{{ tr('Nema odliva za izabrani period.') }}</p></div>
+    {% endif %}
+  </div>
+</div>
+
+{% else %}
+{# ── Detailed flat list ──────────────────────────────────────── #}
+{% macro tx_detail_table(rows, direction) %}
+{% set is_credit = direction == 'credit' %}
+{% set sign  = '+' if is_credit else '−' %}
+{% set color = 'text-positive' if is_credit else 'text-negative' %}
+<table class="data-table">
+  <thead>
+    <tr>
+      <th data-sort="date">{{ tr('Datum') }}</th>
+      <th data-sort="str">{{ tr('Kontrastrana') }}</th>
+      <th data-sort="str">{{ tr('Svrha') }}</th>
+      <th data-sort="str">{{ tr('Valuta') }}</th>
+      <th data-sort="num" class="text-right">{{ tr('Iznos') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td style="white-space:nowrap;font-size:.82rem;">{{ r.date }}</td>
+      <td style="font-size:.84rem;">{{ tr(r.counterparty) }}</td>
+      <td class="text-muted" style="font-size:.78rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ r.purpose or '—' }}</td>
+      <td class="text-muted" style="font-size:.78rem;">{{ r.currency or 'RSD' }}</td>
+      <td class="num {{ color }}" style="font-weight:600;">{{ sign }}{{ money(r.amount) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <span class="card-title" style="color:var(--green);">{{ tr('↓ Prilivi') }}</span>
+    <span class="badge badge-green">{{ tx_inflows|length }} {{ tr("transakcija ·") }} {{ money(tx_inflow_total) }} RSD</span>
+  </div>
+  <div class="table-wrap">
+    {% if tx_inflows %}{{ tx_detail_table(tx_inflows, 'credit') }}
+    {% else %}<div class="empty-state"><p>{{ tr('Nema prihoda za izabrani period.') }}</p></div>{% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title" style="color:var(--red);">{{ tr('↑ Odlivi') }}</span>
+    <span class="badge badge-red">{{ tx_outflows|length }} {{ tr("transakcija ·") }} {{ money(tx_outflow_total) }} RSD</span>
+  </div>
+  <div class="table-wrap">
+    {% if tx_outflows %}{{ tx_detail_table(tx_outflows, 'debit') }}
+    {% else %}<div class="empty-state"><p>{{ tr('Nema odliva za izabrani period.') }}</p></div>{% endif %}
+  </div>
+</div>
+{% endif %}{# /tx_view #}
+
+{# ══════════════════════════════════════════════════════
+   TAB: FAKTURE
+══════════════════════════════════════════════════════ #}
+{% else %}
+
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:28px;">
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Ulazne fakture') }}</div>
+    <div class="kpi-card__value" style="font-size:1.9rem;">{{ kpi_in.cnt or 0 }}</div>
+    <div class="kpi-card__sub">{{ money(kpi_in.total_gross) }} {{ tr("RSD bruto") }}</div>
+  </div>
+  <div class="kpi-card kpi-card--red">
+    <div class="kpi-card__label">{{ tr('Neplaćene ulazne') }}</div>
+    <div class="kpi-card__value text-negative" style="font-size:1.5rem;">{{ money(kpi_in.outstanding) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr("obaveze") }}</div>
+  </div>
+  <div class="kpi-card kpi-card--green">
+    <div class="kpi-card__label">{{ tr('Izlazne fakture') }}</div>
+    <div class="kpi-card__value" style="font-size:1.9rem;">{{ kpi_out.cnt or 0 }}</div>
+    <div class="kpi-card__sub">{{ money(kpi_out.total_gross) }} {{ tr("RSD bruto") }}</div>
+  </div>
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Neto PDV pozicija') }}</div>
+    <div class="kpi-card__value" style="font-size:1.5rem;">
+      {{ money((kpi_out.total_pdv or 0) - (kpi_in.total_pdv or 0)) }}<span class="kpi-card__unit">RSD</span>
+    </div>
+    <div class="kpi-card__sub">{{ tr('izlazni − ulazni PDV') }}</div>
+  </div>
+</div>
+
+{% macro inv_agg_table(rows, direction, kpi) %}
+{% set is_in = direction == 'in' %}
+<table class="data-table">
+  <thead>
+    <tr>
+      <th data-sort="str">{% if is_in %}{{ tr('Dobavljač') }}{% else %}{{ tr('Klijent') }}{% endif %}</th>
+      <th data-sort="num" class="text-right">{{ tr('Faktura') }}</th>
+      <th data-sort="num" class="text-right">{{ tr('Neto') }}</th>
+      <th data-sort="num" class="text-right">{{ tr('PDV') }}</th>
+      <th data-sort="num" class="text-right">{{ tr('Bruto') }}</th>
+      <th data-sort="num" class="text-right">{{ tr('Neplaćeno') }}</th>
+      <th data-sort="date">{{ tr('Prva') }}</th>
+      <th data-sort="date">{{ tr('Poslednja') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td style="font-size:.84rem;font-weight:500;">{{ tr(r.counterparty) }}</td>
+      <td class="num text-muted">{{ r.invoice_count }}</td>
+      <td class="num">{{ money(r.total_net) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span></td>
+      <td class="num text-muted">{{ money(r.total_pdv) }}</td>
+      <td class="num" style="font-weight:600;">{{ money(r.total_gross) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span></td>
+      <td class="num {% if (r.outstanding or 0) > 0 %}text-negative{% else %}text-muted{% endif %}">
+        {% if (r.outstanding or 0) > 0 %}{{ money(r.outstanding) }}{% else %}—{% endif %}
+      </td>
+      <td class="text-muted" style="font-size:.82rem;white-space:nowrap;">{{ r.first_date }}</td>
+      <td class="text-muted" style="font-size:.82rem;white-space:nowrap;">{{ r.last_date }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr style="background:var(--canvas-warm);">
+      <td colspan="2" style="font-weight:600;padding:10px 14px;">{{ tr('Ukupno') }}</td>
+      <td class="num" style="font-weight:700;padding:10px 14px;">{{ money(kpi.total_net) }} RSD</td>
+      <td class="num" style="padding:10px 14px;color:var(--ink-muted);">{{ money(kpi.total_pdv) }}</td>
+      <td class="num" style="font-weight:700;padding:10px 14px;">{{ money(kpi.total_gross) }} RSD</td>
+      <td class="num text-negative" style="padding:10px 14px;">{{ money(kpi.outstanding) }}</td>
+      <td colspan="2"></td>
+    </tr>
+  </tfoot>
+</table>
+{% endmacro %}
+
+{% macro inv_detail_table(rows, direction) %}
+{% set is_in = direction == 'in' %}
+<table class="data-table">
+  <thead>
+    <tr>
+      <th data-sort="date">{% if is_in %}{{ tr('Datum prijema') }}{% else %}{{ tr('Datum izdavanja') }}{% endif %}</th>
+      <th data-sort="str">{% if is_in %}{{ tr('Dobavljač') }}{% else %}{{ tr('Klijent') }}{% endif %}</th>
+      <th data-sort="str">{{ tr('Broj fakture') }}</th>
+      <th data-sort="num" class="text-right">{{ tr('Neto') }}</th>
+      <th data-sort="num" class="text-right">{{ tr('PDV') }}</th>
+      <th data-sort="num" class="text-right">{{ tr('Bruto') }}</th>
+      <th>{{ tr('Status') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td style="white-space:nowrap;font-size:.82rem;">{{ r.date_doc }}</td>
+      <td style="font-size:.84rem;">{{ tr(r.counterparty) }}</td>
+      <td class="text-muted" style="font-size:.78rem;">{{ r.invoice_number_sef or '—' }}</td>
+      <td class="num">{{ money(r.net_amount) }}</td>
+      <td class="num text-muted">{{ money(r.pdv_amount) }}</td>
+      <td class="num" style="font-weight:600;">{{ money((r.net_amount or 0) + (r.pdv_amount or 0)) }}</td>
+      <td>{{ status_badge(r.payment_status) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <span class="card-title">{{ tr('← Ulazne fakture (dobavljači)') }}</span>
+    <span class="badge badge-blue">
+      {{ inv_in|length }} {% if inv_view == 'aggregated' %}{{ tr('dobavljača') }}{% else %}{{ tr("faktura") }}{% endif %}
+    </span>
+  </div>
+  <div class="table-wrap">
+    {% if inv_in %}
+      {% if inv_view == 'aggregated' %}{{ inv_agg_table(inv_in, 'in', kpi_in) }}
+      {% else %}{{ inv_detail_table(inv_in, 'in') }}{% endif %}
+    {% else %}
+    <div class="empty-state"><p>{{ tr('Nema ulaznih faktura za izabrani period.') }}</p></div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">{{ tr('→ Izlazne fakture (klijenti)') }}</span>
+    <span class="badge badge-green">
+      {{ inv_out|length }} {% if inv_view == 'aggregated' %}{{ tr("klijenata") }}{% else %}{{ tr("faktura") }}{% endif %}
+    </span>
+  </div>
+  <div class="table-wrap">
+    {% if inv_out %}
+      {% if inv_view == 'aggregated' %}{{ inv_agg_table(inv_out, 'out', kpi_out) }}
+      {% else %}{{ inv_detail_table(inv_out, 'out') }}{% endif %}
+    {% else %}
+    <div class="empty-state"><p>{{ tr('Nema izlaznih faktura za izabrani period.') }}</p></div>
+    {% endif %}
+  </div>
+</div>
+
+{% endif %}{# /tab #}
+
+<script>
+function toggleDetail(uid) {
+  var tbody = document.getElementById('detail-' + uid);
+  var btn   = document.getElementById('btn-' + uid);
+  if (!tbody) return;
+  var open = tbody.classList.toggle('open');
+  if (btn) btn.classList.toggle('open', open);
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% from "fin_statements/_macros.html" import check_badge, note %}
+{% block title %}{{ tr('Bilans stanja i uspeha') }}{% endblock %}
+
+{% macro amt(cell) -%}
+  {%- if cell is none -%}<td class="text-right text-muted">·</td><td></td>
+  {%- else -%}
+  <td class="text-right fs-amt" data-v="{{ cell.v }}">{{ "{:,.0f}".format(cell.v / 1000).replace(",", ".") }}</td>
+  <td class="text-right fs-pct">{% if cell.est %}<sup class="fs-e">e</sup>{% endif %}{% if cell.pct is not none %}{{ "%.0f"|format(cell.pct) }}%{% endif %}</td>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro ratio(cell) -%}
+  {%- set v = cell.v -%}
+  {%- if v is none -%}<td class="text-right text-muted" colspan="2">—</td>
+  {%- elif cell.fmt == 'pct' -%}<td class="text-right" colspan="2">{{ ("%.1f"|format(v * 100)).replace(".", ",") }}%</td>
+  {%- elif cell.fmt == 'x' -%}<td class="text-right" colspan="2">{{ ("%.2f"|format(v)).replace(".", ",") }}</td>
+  {%- elif cell.fmt == 'days' -%}<td class="text-right" colspan="2">{{ "%.0f"|format(v) }}</td>
+  {%- else -%}<td class="text-right fs-amt" colspan="2" data-v="{{ v }}">{{ "{:,.0f}".format(v / 1000).replace(",", ".") }}</td>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro head(title, cols, skip_proj=False) %}
+  <thead><tr>
+    <th style="min-width:210px;">{{ title }}</th>
+    {% for c in cols %}
+      <th colspan="2" class="text-right {% if c.kind == 'proj' %}fs-proj{% endif %}" style="min-width:118px;">
+        {{ tr(c.title) }}<br><span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.68rem;">{{ tr(c.sub) }}</span>
+      </th>
+    {% endfor %}
+  </tr></thead>
+{% endmacro %}
+
+{% block content %}
+<style>
+  .fs-table { font-size: .8rem; }
+  .fs-table td { padding-top: 4px; padding-bottom: 4px; white-space: nowrap; }
+  .fs-table tr.sec td { background: var(--canvas); font-size: .68rem; letter-spacing: .07em; text-transform: uppercase; font-weight: 700; color: var(--text-muted); }
+  .fs-table tr.sub td { font-weight: 700; }
+  .fs-table tr.tot td { font-weight: 700; border-top: 2px solid var(--text); }
+  .fs-table tr.item td:first-child { padding-left: 24px; }
+  .fs-table .fs-pct { color: var(--text-muted); font-size: .72rem; width: 44px; }
+  .fs-table .fs-proj { background: var(--accent-bg); }
+  .fs-e { color: var(--accent); font-weight: 700; margin-right: 3px; }
+  .fs-seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+  .fs-seg button { border: 0; padding: 5px 12px; background: var(--surface); cursor: pointer; font: inherit; font-size: .82rem; }
+  .fs-seg button.on { background: var(--text); color: var(--surface); font-weight: 600; }
+</style>
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Bilans stanja i uspeha') }}</h1>
+    <p class="page-subtitle">{{ tr('Konsolidovano (Garden Stage + Small Brewery) · izvor: bruto bilansi + procene · iznosi u') }} <span id="fs-unit">000 RSD</span></p>
+  </div>
+  <div class="page-header__actions" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    {% if rep.interims|length > 1 %}
+    <form method="get" style="display:flex;gap:6px;align-items:center;">
+      <label for="fs-ytd" class="text-muted" style="font-size:.82rem;">{{ tr('Presek') }}</label>
+      <select id="fs-ytd" name="ytd" onchange="this.form.submit()" style="height:32px;">
+        {% for s in rep.interims|reverse %}<option value="{{ s.id }}" {% if rep.ytd and s.id == rep.ytd.id %}selected{% endif %}>{{ s.period_to }}</option>{% endfor %}
+      </select>
+    </form>
+    {% endif %}
+    <div class="fs-seg" role="group" aria-label="{{ tr('Valuta') }}">
+      <button type="button" data-cur="RSD" class="on">RSD</button><button type="button" data-cur="EUR">EUR</button>
+    </div>
+    <label for="fs-rate" class="text-muted" style="font-size:.82rem;">{{ tr('Kurs EUR') }}</label>
+    <input id="fs-rate" type="number" step="0.0001" value="117.2" style="width:90px;height:32px;text-align:right;">
+    <a id="fs-export" href="{{ url_for('fin_statements.statements_export', ytd=rep.ytd.id if rep.ytd else None) }}" class="btn btn-primary btn-sm">{{ tr('Izvoz u Excel') }}</a>
+  </div>
+</div>
+
+{% if not rep.cols %}
+  {{ note(tr('Nema uvezenih bruto bilansa.'), 'warning') }}
+{% else %}
+
+{% if rep.checks and not (rep.checks|selectattr('ok', 'equalto', False)|list|length == 0) %}
+  {{ note(tr('Neke kontrole za tekući presek nisu prošle — pogledajte dno stranice.'), 'warning') }}
+{% endif %}
+
+<div class="section-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:20px;align-items:start;">
+  <div class="card">
+    <div class="table-wrap">
+      <table class="data-table fs-table">
+        {{ head(tr('Bilans stanja'), rep.cols|rejectattr('kind', 'equalto', 'proj')|list) }}
+        <tbody>
+        {% for r in rep.bs_rows %}
+          {% set nbs = rep.cols|rejectattr('kind', 'equalto', 'proj')|list|length %}
+          <tr class="{{ r.kind }}">
+            <td {% if r.kind == 'sec' %}colspan="{{ 1 + 2 * nbs }}"{% endif %}>{{ tr(r.label) }}</td>
+            {% for c in r.cells %}{% if rep.cols[loop.index0].kind != 'proj' %}{{ amt(c) }}{% endif %}{% endfor %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:20px;">
+    <div class="card">
+      <div class="table-wrap">
+        <table class="data-table fs-table">
+          {{ head(tr('Bilans uspeha'), rep.cols) }}
+          <tbody>
+          {% for r in rep.is_rows %}
+            <tr class="{{ r.kind }}"><td {% if r.kind == 'sec' %}colspan="{{ 1 + 2 * rep.cols|length }}"{% endif %}>{{ tr(r.label) }}</td>{% for c in r.cells %}{{ amt(c) }}{% endfor %}</tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table class="data-table fs-table">
+          {{ head(tr('Finansijski pokazatelji'), rep.cols) }}
+          <tbody>
+          {% for r in rep.ratio_rows %}
+            <tr class="{{ r.kind }}"><td {% if r.kind == 'sec' %}colspan="{{ 1 + 2 * rep.cols|length }}"{% endif %}>{{ tr(r.label) }}</td>{% for c in r.cells %}{{ ratio(c) }}{% endfor %}</tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:20px;">
+  <div class="card-header">
+    <span class="card-title">{{ tr('Kontrola gotovine — bruto bilans naspram bankovnih izvoda') }}</span>
+    <a href="{{ url_for('fin_statements.settings') }}#racuni" class="btn btn-secondary btn-sm">{{ tr('Povezivanje računa') }}</a>
+  </div>
+  <div class="section-grid" style="grid-template-columns:repeat({{ rep.cash|length }}, minmax(0,1fr));gap:0;">
+  {% for cc in rep.cash %}
+    <div class="table-wrap" style="border-right:1px solid var(--border);">
+      <table class="data-table fs-table">
+        <thead><tr><th>{{ tr(cc.title) }} · {{ tr(cc.sub) }}</th><th class="text-right">{{ tr('BB') }}</th><th class="text-right">{{ tr('Izvod') }}</th><th class="text-right">{{ tr('Razlika') }}</th></tr></thead>
+        <tbody>
+        {% for x in cc.linked %}
+          <tr class="item">
+            <td>{{ x.konto }} {{ x.label or '' }}<br><span class="text-muted" style="font-size:.7rem;">{{ x.account }}{% if x.bank_date %} · {{ x.bank_date }}{% endif %}{% if x.stale %} · <strong style="color:var(--red);">{{ tr("zastareo") }}</strong>{% endif %}</span></td>
+            <td class="text-right fs-amt" data-v="{{ x.saldo }}"></td>
+            <td class="text-right">{% if x.bank is not none %}<span class="fs-amt" data-v="{{ x.bank }}"></span>{% else %}—{% endif %}</td>
+            <td class="text-right" {% if x.diff is not none and (x.diff|abs) >= 1000 %}style="color:var(--red);font-weight:700;"{% endif %}>{% if x.diff is not none %}<span class="fs-amt" data-v="{{ x.diff }}"></span>{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+          <tr class="sub"><td>{{ tr('Razlika — povezani računi') }}</td><td></td><td></td>
+            <td class="text-right" {% if (cc.diff|abs) >= 1000 %}style="color:var(--red);"{% endif %}><span class="fs-amt" data-v="{{ cc.diff }}"></span></td></tr>
+          <tr class="sec"><td colspan="4">{{ tr('Bez izvoda u sistemu (neusaglašeno)') }}</td></tr>
+        {% for g in cc.groups %}
+          <tr class="item"><td>{{ tr(g.label) }} <span class="text-muted" style="font-size:.7rem;">({{ g.kontos|join(', ') }})</span></td>
+            <td class="text-right fs-amt" data-v="{{ g.saldo }}"></td><td></td><td></td></tr>
+        {% endfor %}
+        {% for x in cc.other %}
+          <tr class="item"><td>{{ x.konto }} {{ x.naziv or '' }}</td><td class="text-right fs-amt" data-v="{{ x.saldo }}"></td><td></td><td></td></tr>
+        {% endfor %}
+          <tr class="tot"><td>{{ tr('Gotovina ukupno (BB)') }}</td><td class="text-right fs-amt" data-v="{{ cc.bb_total }}"></td><td></td><td></td></tr>
+        {% for u in cc.unlinked %}
+          <tr><td colspan="3" class="text-muted" style="font-size:.72rem;">{{ tr('Račun') }} {{ u.account }} {{ tr("ima stanje na izvodu (") }}{{ u.bank_date }}{{ tr("), ali nije povezan sa kontom") }}</td>
+            <td class="text-right fs-amt" data-v="{{ u.bank }}"></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endfor %}
+  </div>
+</div>
+
+<p class="text-muted" style="font-size:.78rem;margin-top:12px;">
+  <sup class="fs-e">e</sup>{{ tr("stavka sadrži procenu (COGS, amortizacija, porez na dobit) · % = udeo u ukupnoj aktivi, odnosno poslovnim prihodima · Projekcija: YTD + preostali meseci osnovne godine raspoređeni po POS prometu · bilans stanja se ne projektuje") }}</p>
+
+{% if rep.checks or rep.estimates %}
+<div class="section-grid" style="grid-template-columns:1fr 1fr;gap:20px;align-items:start;margin-top:12px;">
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr("Kontrole — presek") }} {{ rep.ytd.period_to if rep.ytd else '' }}</span></div>
+    <div class="table-wrap"><table class="data-table" style="font-size:.8rem;">
+      <tbody>{% for c in rep.checks %}<tr><td>{{ c.name }}</td><td>{{ check_badge(c.ok) }}</td><td class="text-muted">{{ c.detail }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Procene') }}</span><a href="{{ url_for('fin_statements.settings', snapshot=rep.ytd.id if rep.ytd else None) }}" class="btn btn-secondary btn-sm">{{ tr('Podešavanja') }}</a></div>
+    <div class="table-wrap"><table class="data-table" style="font-size:.8rem;">
+      <tbody>{% for e in rep.estimates %}<tr><td>{{ e.name }}</td><td class="text-right fs-amt" data-v="{{ e.amount }}">{{ "{:,.0f}".format(e.amount / 1000).replace(",", ".") }}</td><td class="text-muted">{{ e.basis }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+
+<script>
+(function () {
+  const rateEl = document.getElementById("fs-rate");
+  const unitEl = document.getElementById("fs-unit");
+  const exportEl = document.getElementById("fs-export");
+  const buttons = document.querySelectorAll(".fs-seg button");
+  let cur = "RSD";
+  try {
+    cur = localStorage.getItem("fs_cur") || "RSD";
+    rateEl.value = localStorage.getItem("fs_rate") || rateEl.value;
+  } catch (e) { /* storage unavailable */ }
+
+  function render() {
+    const rate = parseFloat(rateEl.value) || 117.2;
+    const eur = cur === "EUR";
+    const fmt = new Intl.NumberFormat("sr-RS", { minimumFractionDigits: eur ? 1 : 0, maximumFractionDigits: eur ? 1 : 0 });
+    document.querySelectorAll(".fs-amt").forEach(td => {
+      const v = parseFloat(td.dataset.v) / 1000;
+      { const t = fmt.format(eur ? v / rate : v); td.textContent = /^-0([,.]0)?$/.test(t) ? t.slice(1) : t; }
+    });
+    buttons.forEach(b => b.classList.toggle("on", b.dataset.cur === cur));
+    unitEl.textContent = eur ? "000 EUR" : "000 RSD";
+    if (exportEl) {
+      const u = new URL(exportEl.href, window.location.origin);
+      u.searchParams.set("kurs", rate);
+      exportEl.href = u.pathname + u.search;
+    }
+    try { localStorage.setItem("fs_cur", cur); localStorage.setItem("fs_rate", rateEl.value); } catch (e) {}
+  }
+  buttons.forEach(b => b.addEventListener("click", () => { cur = b.dataset.cur; render(); }));
+  rateEl.addEventListener("input", render);
+  render();
+})();
+</script>
+{% endblock %}

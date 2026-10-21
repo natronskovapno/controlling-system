@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('PDV') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != '' and val|float != 0 -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% macro signed(val) %}
+  {%- set v = val|float -%}
+  {%- if v > 0 -%}<span class="text-negative">+{{ "{:,.0f}".format(v).replace(",",".") }}</span>
+  {%- elif v < 0 -%}<span class="text-positive">{{ "{:,.0f}".format(v).replace(",",".") }}</span>
+  {%- else -%}<span class="text-muted">—</span>
+  {%- endif -%}
+{% endmacro %}
+
+{% macro dir_badge(d) %}
+  {%- if d == 'ulazni' -%}<span class="badge badge-blue">{{ tr('Ulazni') }}</span>
+  {%- elif d == 'izlazni' -%}<span class="badge badge-amber">{{ tr('Izlazni') }}</span>
+  {%- elif d == 'pazar' -%}<span class="badge badge-green">{{ tr('Pazar') }}</span>
+  {%- elif d == 'parking' -%}<span class="badge badge-green">{{ tr('Parking i ostalo') }}</span>
+  {%- else -%}<span class="badge badge-gray">{{ d }}</span>
+  {%- endif -%}
+{% endmacro %}
+
+{% macro entity_badge(e) %}
+  {%- if e == 'main' -%}<span class="badge badge-blue">Garden Stage</span>
+  {%- elif e == 'brewery' -%}<span class="badge badge-amber">Small Brewery</span>
+  {%- else -%}<span class="badge badge-gray">{{ e }}</span>
+  {%- endif -%}
+{% endmacro %}
+
+{% macro sort_arrow(col) %}
+  {%- if sort == col -%}
+    {%- if order == 'asc' -%} ▲{%- else -%} ▼{%- endif -%}
+  {%- endif -%}
+{% endmacro %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('PDV') }}</h1>
+    <p class="page-subtitle">{{ tr('Pregled i stavke poreza na dodatu vrednost') }}</p>
+  </div>
+  <div style="font-size:.75rem;color:var(--ink-muted);background:var(--canvas-warm);
+              border:1px solid var(--border-soft);border-radius:var(--r-sm);
+              padding:6px 10px;align-self:center;">
+    {{ tr('⚠ Prototip — metodologija podleže verifikaciji od strane knjigovođe') }}
+  </div>
+</div>
+
+{# ── Tab buttons ─────────────────────────────────────────────────── #}
+<div style="display:flex;gap:8px;margin-bottom:20px;">
+  <a href="?tab=pregled&date_from={{ date_from }}&date_to={{ date_to }}"
+     class="btn {% if tab == 'pregled' %}btn-primary{% else %}btn-secondary{% endif %}">
+    {{ tr('Pregled po mesecima') }}
+  </a>
+  <a href="?tab=stavke&date_from={{ date_from }}&date_to={{ date_to }}&direction={{ direction }}&entity={{ entity }}&sort={{ sort }}&order={{ order }}"
+     class="btn {% if tab == 'stavke' %}btn-primary{% else %}btn-secondary{% endif %}">
+    {{ tr('Stavke') }}
+  </a>
+  <a href="?tab=metodologija"
+     class="btn {% if tab == 'metodologija' %}btn-primary{% else %}btn-secondary{% endif %}">
+    {{ tr('Metodologija') }}
+  </a>
+</div>
+
+{# ── Shared date filter ──────────────────────────────────────────── #}
+{% if tab != "metodologija" %}
+<form method="get">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  {% if tab == 'stavke' %}
+  <input type="hidden" name="direction" value="{{ direction }}">
+  <input type="hidden" name="entity"    value="{{ entity }}">
+  <input type="hidden" name="sort"      value="{{ sort }}">
+  <input type="hidden" name="order"     value="{{ order }}">
+  {% endif %}
+  <div class="filter-bar" style="margin-bottom:24px;">
+    <div class="form-group">
+      <label>{{ tr('Od datuma') }}</label>
+      <input type="date" name="date_from" value="{{ date_from }}">
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Do datuma') }}</label>
+      <input type="date" name="date_to" value="{{ date_to }}">
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <div style="display:flex;gap:6px;">
+        <button type="submit" class="btn btn-primary btn-sm">{{ tr('Filtriraj') }}</button>
+        <a href="?tab={{ tab }}" class="btn btn-ghost btn-sm">{{ tr('Reset') }}</a>
+      </div>
+    </div>
+  </div>
+</form>
+{% endif %}
+
+{# ══════════════════════════════════════════════════════════════════
+   TAB: PREGLED
+══════════════════════════════════════════════════════════════════ #}
+{% if tab == 'pregled' %}
+
+{# KPI tiles #}
+<div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:28px;">
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Ukupni ulazni PDV') }}</div>
+    <div class="kpi-card__value text-positive" style="font-size:1.4rem;">{{ money(totals.total_ulazni) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('pretporez (odbitni)') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--amber">
+    <div class="kpi-card__label">{{ tr('Ukupni izlazni PDV') }}</div>
+    <div class="kpi-card__value text-negative" style="font-size:1.4rem;">{{ money(totals.total_izlazni) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('obaveza prema državi') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--green">
+    <div class="kpi-card__label">{{ tr('Pazar PDV') }}</div>
+    <div class="kpi-card__value text-negative" style="font-size:1.4rem;">{{ money(totals.total_pazar) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('sadržan u POS prodaji') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--green">
+    <div class="kpi-card__label">{{ tr('Parking i ostalo PDV') }}</div>
+    <div class="kpi-card__value text-negative" style="font-size:1.4rem;">{{ money(totals.total_parking) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('iz fiksnih prihoda') }}</div>
+  </div>
+  <div class="kpi-card {% if totals.total_net > 0 %}kpi-card--red{% else %}kpi-card--green{% endif %}">
+    <div class="kpi-card__label">{{ tr('Neto PDV pozicija') }}</div>
+    <div class="kpi-card__value" style="font-size:1.4rem;">{{ signed(totals.total_net) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('pazar + izlazni + parking i ostalo − ulazni') }}</div>
+  </div>
+</div>
+
+{# Monthly breakdown table #}
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">{{ tr('Mesečni pregled po entitetu') }}</span>
+
+  </div>
+  <div class="table-wrap">
+    {% if pregled %}
+    <table class="data-table" style="font-size:.82rem;border-collapse:collapse;">
+      <colgroup>
+        <col style="min-width:110px;">
+        <col><col><col><col style="border-right:2px solid var(--border);">
+        <col><col><col><col style="border-right:2px solid var(--border);">
+        <col><col><col><col>
+      </colgroup>
+      <thead>
+        <tr>
+          <th rowspan="2" style="vertical-align:bottom;border-right:2px solid var(--border);">{{ tr('Mesec') }}</th>
+          <th colspan="5" style="text-align:center;border-bottom:1px solid var(--border-soft);
+              border-right:2px solid var(--border);padding-bottom:4px;color:var(--blue);">Garden Stage</th>
+          <th colspan="5" style="text-align:center;border-bottom:1px solid var(--border-soft);
+              border-right:2px solid var(--border);padding-bottom:4px;color:var(--amber);">Small Brewery</th>
+          <th colspan="5" style="text-align:center;border-bottom:1px solid var(--border-soft);
+              padding-bottom:4px;">{{ tr('Ukupno') }}</th>
+        </tr>
+        <tr>
+          <th class="text-right" style="color:var(--blue);">{{ tr('Ulazni') }}</th>
+          <th class="text-right" style="color:var(--blue);">{{ tr('Izlazni') }}</th>
+          <th class="text-right" style="color:var(--blue);">{{ tr('Pazar') }}</th>
+          <th class="text-right" style="color:var(--blue);">{{ tr('Parking i ostalo') }}</th>
+          <th class="text-right" style="color:var(--blue);border-right:2px solid var(--border);">{{ tr('Neto GS') }}</th>
+          <th class="text-right" style="color:var(--amber);">{{ tr('Ulazni') }}</th>
+          <th class="text-right" style="color:var(--amber);">{{ tr('Izlazni') }}</th>
+          <th class="text-right" style="color:var(--amber);">{{ tr('Pazar') }}</th>
+          <th class="text-right" style="color:var(--amber);">{{ tr('Parking i ostalo') }}</th>
+          <th class="text-right" style="color:var(--amber);border-right:2px solid var(--border);">{{ tr('Neto BR') }}</th>
+          <th class="text-right">{{ tr('Ulazni') }}</th>
+          <th class="text-right">{{ tr('Izlazni') }}</th>
+          <th class="text-right">{{ tr('Pazar') }}</th>
+          <th class="text-right">{{ tr('Parking i ostalo') }}</th>
+          <th class="text-right" style="font-weight:700;">{{ tr('Neto ukupno') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in pregled|reverse %}
+        <tr>
+          <td style="font-weight:500;white-space:nowrap;border-right:2px solid var(--border);">{{ r.label }}</td>
+          {# Garden Stage #}
+          <td class="num text-muted">{{ money(r.ak_ulazni) }}</td>
+          <td class="num text-muted">{{ money(r.ak_izlazni) }}</td>
+          <td class="num text-muted" >{{ money(r.ak_pazar) }}</td>
+          <td class="num text-muted">{{ money(r.ak_parking) }}</td>
+          <td class="num" style="border-right:2px solid var(--border);">{{ signed(r.ak_net) }}</td>
+          {# Small Brewery #}
+          <td class="num text-muted">{{ money(r.mp_ulazni) }}</td>
+          <td class="num text-muted">{{ money(r.mp_izlazni) }}</td>
+          <td class="num text-muted">{{ money(r.mp_pazar) }}</td>
+          <td class="num text-muted">{{ money(r.brewery_parking) }}</td>
+          <td class="num" style="border-right:2px solid var(--border);">{{ signed(r.mp_net) }}</td>
+          {# Totals #}
+          <td class="num">{{ money(r.total_ulazni) }}</td>
+          <td class="num">{{ money(r.total_izlazni) }}</td>
+          <td class="num" >{{ money(r.total_pazar) }}</td>
+          <td class="num">{{ money(r.total_parking) }}</td>
+          <td class="num" style="font-weight:700;">{{ signed(r.total_net) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="background:var(--canvas-warm);font-weight:700;">
+          <td style="padding:10px 14px;border-right:2px solid var(--border);">{{ tr('Ukupno') }}</td>
+          <td class="num" style="padding:10px 14px;">{{ money(totals.ak_ulazni) }}</td>
+          <td class="num" style="padding:10px 14px;">{{ money(totals.ak_izlazni) }}</td>
+          <td class="num" style="padding:10px 14px;">{{ money(totals.ak_pazar) }}</td>
+          <td class="num" style="padding:10px 14px;">{{ money(totals.ak_parking) }}</td>
+          <td class="num" style="padding:10px 14px;border-right:2px solid var(--border);">{{ signed(totals.ak_net) }}</td>
+          <td class="num" style="padding:10px 14px;">{{ money(totals.mp_ulazni) }}</td>
+          <td class="num" style="padding:10px 14px;">{{ money(totals.mp_izlazni) }}</td>
+          <td class="num" style="padding:10px 14px;">{{ money(totals.mp_pazar) }}</td>
+          <td class="num" style="padding:10px 14px;">{{ money(totals.brewery_parking) }}</td>
+          <td class="num" style="padding:10px 14px;border-right:2px solid var(--border);">{{ signed(totals.mp_net) }}</td>
+          <td class="num" style="padding:10px 14px;">{{ money(totals.total_ulazni) }}</td>
+          <td class="num" style="padding:10px 14px;">{{ money(totals.total_izlazni) }}</td>
+          <td class="num" style="padding:10px 14px;">{{ money(totals.total_pazar) }}</td>
+          <td class="num" style="padding:10px 14px;">{{ money(totals.total_parking) }}</td>
+          <td class="num" style="padding:10px 14px;font-size:1rem;">{{ signed(totals.total_net) }}</td>
+        </tr>
+      </tfoot>
+    </table>
+    {% else %}
+    <div class="empty-state"><p>{{ tr('Nema podataka za izabrani period.') }}</p></div>
+    {% endif %}
+  </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════
+   TAB: STAVKE
+══════════════════════════════════════════════════════════════════ #}
+{% elif tab == 'stavke' %}
+
+{# Filter bar for stavke #}
+<form method="get" style="margin-bottom:16px;">
+  <input type="hidden" name="tab"       value="stavke">
+  <input type="hidden" name="date_from" value="{{ date_from }}">
+  <input type="hidden" name="date_to"   value="{{ date_to }}">
+  <input type="hidden" name="sort"      value="{{ sort }}">
+  <input type="hidden" name="order"     value="{{ order }}">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+    <div class="form-group" style="margin:0;">
+      <label style="font-size:.75rem;">{{ tr('Smer') }}</label>
+      <select name="direction" onchange="this.form.submit()"
+              style="font-size:.82rem;padding:5px 8px;border:1px solid var(--border-soft);
+                     border-radius:var(--r-sm);background:var(--surface);">
+        <option value=""        {% if direction == '' %}selected{% endif %}>{{ tr('Sve') }}</option>
+        <option value="ulazni"  {% if direction == 'ulazni' %}selected{% endif %}>{{ tr('Ulazni') }}</option>
+        <option value="izlazni" {% if direction == 'izlazni' %}selected{% endif %}>{{ tr('Izlazni') }}</option>
+        <option value="pazar"   {% if direction == 'pazar' %}selected{% endif %}>{{ tr('Pazar') }}</option>
+        <option value="parking" {% if direction == 'parking' %}selected{% endif %}>{{ tr('Parking i ostalo') }}</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label style="font-size:.75rem;">{{ tr('Entitet') }}</label>
+      <select name="entity" onchange="this.form.submit()"
+              style="font-size:.82rem;padding:5px 8px;border:1px solid var(--border-soft);
+                     border-radius:var(--r-sm);background:var(--surface);">
+        <option value=""              {% if entity == '' %}selected{% endif %}>{{ tr('Svi') }}</option>
+        <option value="main"    {% if entity == 'main' %}selected{% endif %}>Garden Stage</option>
+        <option value="brewery"   {% if entity == 'brewery' %}selected{% endif %}>Small Brewery</option>
+      </select>
+    </div>
+    {% if direction or entity %}
+    <a href="?tab=stavke&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}&order={{ order }}"
+       class="btn btn-ghost btn-sm" style="align-self:flex-end;">{{ tr('× Otkaži') }}</a>
+    {% endif %}
+  </div>
+</form>
+
+{# KPI summary for current filter #}
+<div class="kpi-grid" style="grid-template-columns:repeat(6,1fr);margin-bottom:20px;">
+  <div class="kpi-card">
+    <div class="kpi-card__label">{{ tr('Stavki') }}</div>
+    <div class="kpi-card__value" style="font-size:1.6rem;">{{ stavke|length }}</div>
+  </div>
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Ulazni PDV') }}</div>
+    <div class="kpi-card__value text-positive" style="font-size:1.2rem;">{{ money(stavke_totals.ulazni) }}<span class="kpi-card__unit">RSD</span></div>
+  </div>
+  <div class="kpi-card kpi-card--amber">
+    <div class="kpi-card__label">{{ tr('Izlazni PDV') }}</div>
+    <div class="kpi-card__value text-negative" style="font-size:1.2rem;">{{ money(stavke_totals.izlazni) }}<span class="kpi-card__unit">RSD</span></div>
+  </div>
+  <div class="kpi-card kpi-card--green">
+    <div class="kpi-card__label">{{ tr('Pazar PDV') }}</div>
+    <div class="kpi-card__value text-negative" style="font-size:1.2rem;">{{ money(stavke_totals.pazar) }}<span class="kpi-card__unit">RSD</span></div>
+  </div>
+  <div class="kpi-card kpi-card--green">
+    <div class="kpi-card__label">{{ tr('Parking i ostalo PDV') }}</div>
+    <div class="kpi-card__value text-negative" style="font-size:1.2rem;">{{ money(stavke_totals.parking) }}<span class="kpi-card__unit">RSD</span></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-card__label">{{ tr('Ukupno PDV') }}</div>
+    <div class="kpi-card__value" style="font-size:1.2rem;">{{ money(stavke_totals.pdv) }}<span class="kpi-card__unit">RSD</span></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">{{ tr('PDV stavke') }}</span>
+    <span class="badge badge-gray">{{ stavke|length }} {{ tr("redova") }}</span>
+  </div>
+  <div class="table-wrap">
+    {% if stavke %}
+    <table class="data-table" style="font-size:.82rem;">
+      <thead>
+        <tr>
+          <th><a href="{{ sort_url('date') }}" style="color:inherit;text-decoration:none;">{{ tr('Datum') }}{{ sort_arrow('date') }}</a></th>
+          <th><a href="{{ sort_url('direction') }}" style="color:inherit;text-decoration:none;">{{ tr('Smer') }}{{ sort_arrow('direction') }}</a></th>
+          <th><a href="{{ sort_url('entity') }}" style="color:inherit;text-decoration:none;">{{ tr('Entitet') }}{{ sort_arrow('entity') }}</a></th>
+          <th><a href="{{ sort_url('counterparty') }}" style="color:inherit;text-decoration:none;">{{ tr('Kontrastrana') }}{{ sort_arrow('counterparty') }}</a></th>
+          <th>{{ tr('Referenca') }}</th>
+          <th class="text-right"><a href="{{ sort_url('rate') }}" style="color:inherit;text-decoration:none;">{{ tr('Stopa') }}{{ sort_arrow('rate') }}</a></th>
+          <th class="text-right"><a href="{{ sort_url('net_amount') }}" style="color:inherit;text-decoration:none;">{{ tr('Neto') }}{{ sort_arrow('net_amount') }}</a></th>
+          <th class="text-right"><a href="{{ sort_url('pdv_amount') }}" style="color:inherit;text-decoration:none;">{{ tr('PDV') }}{{ sort_arrow('pdv_amount') }}</a></th>
+          <th>{{ tr('Status') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in stavke %}
+        <tr {% if r.direction == 'pazar' %}style="font-style:italic;color:var(--ink-muted);"{% endif %}>
+          <td style="white-space:nowrap;">{{ r.date }}</td>
+          <td>{{ dir_badge(r.direction) }}</td>
+          <td>{{ entity_badge(r.entity) }}</td>
+          <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            {{ r.counterparty or '—' }}
+          </td>
+          <td class="text-muted" style="font-size:.76rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            {{ r.reference or '—' }}
+          </td>
+          <td class="num text-muted">{{ "%.0f"|format(r.rate|float) }}%</td>
+          <td class="num">{{ money(r.net_amount) }}</td>
+          <td class="num" style="font-weight:600;
+            {% if r.direction == 'ulazni' %}color:var(--green);
+            {% elif r.direction in ('izlazni','pazar') %}color:var(--red);{% endif %}">
+            {{ money(r.pdv_amount) }}
+          </td>
+          <td>
+            {% if r.payment_status == 'N/A' %}
+              <span class="text-muted" style="font-size:.75rem;">—</span>
+            {% elif r.payment_status == 'Paid' %}
+              <span class="badge badge-green">{{ tr('Plaćeno') }}</span>
+            {% elif r.payment_status == 'Partial' %}
+              <span class="badge badge-amber">{{ tr('Parcijalno') }}</span>
+            {% elif r.payment_status %}
+              <span class="badge badge-red">{{ tr('Neplaćeno') }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="background:var(--canvas-warm);font-weight:700;">
+          <td colspan="6" style="padding:10px 14px;">{{ tr('Ukupno') }}</td>
+          <td class="num" style="padding:10px 14px;">{{ money(stavke_totals.net) }}</td>
+          <td class="num" style="padding:10px 14px;font-size:.95rem;">{{ money(stavke_totals.pdv) }}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+    {% else %}
+    <div class="empty-state"><p>{{ tr('Nema stavki za izabrani filter.') }}</p></div>
+    {% endif %}
+  </div>
+</div>
+
+{% elif tab == 'metodologija' %}
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">{{ tr('Metodologija izračunavanja PDV') }}</span>
+    <span style="font-size:.75rem;color:var(--ink-muted);">
+      {{ tr('Automatski generisano iz izvornog koda — uvek aktuelno') }}
+    </span>
+  </div>
+  <div style="padding:20px 24px;">
+    {% for section in metodologija %}
+    <div style="margin-bottom:28px;">
+      <div style="font-size:.7rem;font-weight:700;letter-spacing:.08em;
+                  text-transform:uppercase;color:var(--ink-muted);
+                  border-bottom:1px solid var(--border-soft);
+                  padding-bottom:6px;margin-bottom:12px;">
+        {{ section.title }}
+      </div>
+      <pre style="font-family:'DM Sans',sans-serif;font-size:.84rem;
+                  line-height:1.7;white-space:pre-wrap;margin:0;
+                  color:var(--ink);">{{ section.body }}</pre>
+    </div>
+    {% endfor %}
+    <div style="margin-top:32px;padding:12px 16px;
+                background:var(--canvas-warm);border-radius:var(--r-sm);
+                border-left:3px solid var(--amber);font-size:.8rem;color:var(--ink-muted);">
+      {{ tr('⚠ Prototip — metodologija podleže verifikaciji od strane knjigovođe pre zvanične upotrebe.') }}
+    </div>
+  </div>
+</div>
+
+{% endif %}{# /tab #}
+
+{% endblock %}

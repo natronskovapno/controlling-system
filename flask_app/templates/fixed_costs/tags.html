@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Upravljanje tagovima') }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Tagovi fiksnih troškova') }}</h1>
+    <p class="page-subtitle">{{ tr('Dodaj, izmeni ili deaktiviraj kategorije') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('fixed_costs.index') }}" class="btn btn-secondary btn-sm">{{ tr('← Nazad') }}</a>
+  </div>
+</div>
+
+{% macro submodule_badge(s) %}
+  {% if s == 'operativni' %}<span class="badge badge-blue">{{ tr('Operativni') }}</span>
+  {% elif s == 'parking' %}<span class="badge badge-green">{{ tr('Parking') }}</span>
+  {% elif s == 'podnajam' %}<span class="badge badge-green">{{ tr('Podnajam') }}</span>
+  {% elif s == 'sponzori' %}<span class="badge badge-blue">{{ tr('Sponzori') }}</span>
+  {% elif s == 'ostalo' %}<span class="badge badge-gray">{{ tr('Ostalo') }}</span>
+  {% else %}<span class="badge badge-gray">{{ s }}</span>{% endif %}
+{% endmacro %}
+
+{% macro venue_badge(v, s) %}
+  {% if s != 'operativni' %}—
+  {% elif v == 'Garden' %}<span class="badge" style="background:#e8f4fd;color:#1a6fa0;">Garden</span>
+  {% elif v == 'Corner' %}<span class="badge" style="background:#f0eafb;color:#6b35b5;">Corner</span>
+  {% elif v == 'shared' %}<span class="badge badge-gray">{{ tr('Zajednički') }}</span>
+  {% elif v == 'Brewery' %}<span class="badge" style="background:#fdf3e8;color:#a06a1a;">Brewery</span>
+  {% else %}<span class="badge badge-gray">{{ v }}</span>{% endif %}
+{% endmacro %}
+
+<div class="section-grid">
+  <!-- Tag list -->
+  <div class="card" style="grid-column:1/-1;">
+    <div class="card-header"><span class="card-title">{{ tr('Postojeći tagovi') }}</span></div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>{{ tr('Naziv') }}</th>
+            <th>{{ tr('Tip') }}</th>
+            <th>{{ tr('Submodul') }}</th>
+            <th>{{ tr('Venue') }}</th>
+            <th>{{ tr('Opis') }}</th>
+            <th class="text-right">{{ tr('Korišćen') }}</th>
+            <th>{{ tr('Status') }}</th>
+            <th style="min-width:220px;">{{ tr('Izmeni') }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in tags %}
+          <tr id="row-{{ t.tag_id }}" style="{{ 'opacity:.5;' if not t.active }}">
+            <td style="font-weight:500;">{{ tr(t.name) }}</td>
+            <td>
+              {% if t.type == 'expense' %}
+                <span class="badge badge-red">{{ tr('Trošak') }}</span>
+              {% else %}
+                <span class="badge badge-green">{{ tr('Prihod') }}</span>
+              {% endif %}
+            </td>
+            <td>{{ submodule_badge(t.submodule or 'operativni') }}</td>
+            <td>{{ venue_badge(t.venue or 'shared', t.submodule or 'operativni') }}</td>
+            <td class="text-muted" style="font-size:.8rem;">{{ t.description or '—' }}</td>
+            <td class="num">{{ t.usage_count }}x</td>
+            <td>
+              {% if t.active %}
+                <span class="badge badge-green">{{ tr('Aktivan') }}</span>
+              {% else %}
+                <span class="badge badge-gray">{{ tr('Neaktivan') }}</span>
+              {% endif %}
+            </td>
+            <td>
+              <form method="post" id="edit-form-{{ t.tag_id }}"
+                    action="{{ url_for('fixed_costs.edit_tag', tag_id=t.tag_id) }}"
+                    style="display:flex;gap:4px;align-items:center;">
+                <select name="submodule" data-row="{{ t.tag_id }}"
+                        onchange="toggleVenueEdit(this); this.form.submit();"
+                        style="padding:3px 5px;font-size:.76rem;border-radius:var(--r-sm);border:1px solid var(--border);">
+                  {% for s in ['operativni','parking','podnajam','sponzori','ostalo'] %}
+                  <option value="{{ s }}" {{ 'selected' if (t.submodule or 'operativni') == s }}>{{ tr(s) }}</option>
+                  {% endfor %}
+                </select>
+                <select name="venue" id="venue-edit-{{ t.tag_id }}"
+                        onchange="this.form.submit();"
+                        style="padding:3px 5px;font-size:.76rem;border-radius:var(--r-sm);border:1px solid var(--border);
+                               opacity:{{ '1' if (t.submodule or 'operativni') == 'operativni' else '0.3' }};"
+                        {{ 'disabled' if (t.submodule or 'operativni') != 'operativni' }}>
+                  {% for v in ['shared','Garden','Corner'] %}
+                  <option value="{{ v }}" {{ 'selected' if (t.venue or 'shared') == v }}>{{ v }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+            </td>
+            <td style="white-space:nowrap;">
+              <form method="post" action="{{ url_for('fixed_costs.toggle_tag', tag_id=t.tag_id) }}" style="display:inline;">
+                <button class="btn btn-ghost btn-sm">
+                  {{ tr('Deaktiviraj') if t.active else 'Aktiviraj' }}
+                </button>
+              </form>
+              {% if t.usage_count == 0 %}
+              <form method="post" action="{{ url_for('fixed_costs.delete_tag', tag_id=t.tag_id) }}" style="display:inline;">
+                <button class="btn btn-danger btn-sm" data-confirm="Obrisati tag '{{ tr(t.name) }}'?">{{ tr('Obriši') }}</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- New tag form -->
+  <div style="grid-column:1/-1;max-width:540px;">
+    <div class="card">
+      <div class="card-header"><span class="card-title">{{ tr('Novi tag') }}</span></div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('fixed_costs.new_tag') }}">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label>{{ tr('Naziv *') }}</label>
+              <input type="text" name="name" required placeholder="{{ tr('npr. Kirija — Garden') }}">
+            </div>
+            <div class="form-group">
+              <label>{{ tr('Tip') }}</label>
+              <select name="type">
+                <option value="expense">{{ tr('Trošak') }}</option>
+                <option value="income">{{ tr('Prihod') }}</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>{{ tr('Submodul') }}</label>
+              <select name="submodule" id="new-submodule" onchange="toggleVenueField()">
+                <option value="operativni">{{ tr('Operativni') }}</option>
+                <option value="parking">{{ tr('Parking') }}</option>
+                <option value="podnajam">{{ tr('Podnajam') }}</option>
+                <option value="sponzori">{{ tr('Sponzori') }}</option>
+                <option value="ostalo">{{ tr('Ostalo') }}</option>
+              </select>
+            </div>
+            <div class="form-group" id="venue-field">
+              <label>{{ tr('Venue') }} ({{ tr('samo Operativni') }})</label>
+              <select name="venue">
+                <option value="shared">{{ tr('Zajednički') }}</option>
+                <option value="Garden">Garden</option>
+                <option value="Corner">Corner</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>{{ tr('Opis') }}</label>
+            <input type="text" name="description" placeholder="{{ tr('Opciono') }}">
+          </div>
+          <div style="text-align:right;margin-top:12px;">
+            <button type="submit" class="btn btn-primary">{{ tr('Dodaj tag') }}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleVenueField() {
+  const sub = document.getElementById('new-submodule').value;
+  document.getElementById('venue-field').style.opacity = sub === 'operativni' ? '1' : '.4';
+}
+toggleVenueField();
+
+function toggleVenueEdit(subSel) {
+  const tagId = subSel.dataset.row;
+  const venSel = document.getElementById('venue-edit-' + tagId);
+  if (!venSel) return;
+  const isOp = subSel.value === 'operativni';
+  venSel.style.opacity = isOp ? '1' : '0.3';
+  venSel.disabled = !isOp;
+  if (!isOp) venSel.value = 'shared';
+}
+</script>
+{% endblock %}

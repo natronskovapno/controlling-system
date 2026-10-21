@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Nova faktura') }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Ručni unos fakture') }}</h1>
+    <p class="page-subtitle">
+      {% if direction == 'in' %}{{ tr('Ulazna faktura — bela (nije u SEF-u)') }}{% else %}{{ tr('Izlazna faktura — bela') }}{% endif %}
+    </p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('invoices.index', direction=direction) }}" class="btn btn-secondary">{{ tr('← Nazad') }}</a>
+  </div>
+</div>
+
+<form method="post" style="max-width:700px;">
+  <div class="card mb-3">
+    <div class="card-header"><span class="card-title">{{ tr('Podaci') }}</span></div>
+    <div class="card-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>{% if direction == 'in' %}{{ tr('Dobavljač') }}{% else %}{{ tr('Klijent') }}{% endif %} *</label>
+          <input type="text" name="counterparty" required placeholder="{{ tr('Naziv firme') }}">
+        </div>
+        <div class="form-group">
+          <label>{{ tr("PIB") }}</label>
+          <input type="text" name="counterparty_pib" placeholder="{{ tr('opciono') }}">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:12px;">
+        <div class="form-group">
+          <label>{{ tr('Datum izdavanja *') }}</label>
+          <input type="date" name="date_issued" required>
+        </div>
+        <div class="form-group">
+          <label>{{ tr('Rok plaćanja') }}</label>
+          <input type="date" name="due_date">
+        </div>
+        <div class="form-group">
+          <label>{{ tr('Broj fakture') }}</label>
+          <input type="text" name="invoice_number_ext" placeholder="{{ tr('npr. 2025/001') }}">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header"><span class="card-title">{{ tr("Iznosi") }}</span></div>
+    <div class="card-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>{{ tr('Neto iznos (bez PDV) *') }}</label>
+          <input type="number" step="0.01" name="net_amount" required placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label>{{ tr('PDV stopa (%)') }}</label>
+          <select name="pdv_rate">
+            <option value="0">0%</option>
+            <option value="10">10%</option>
+            <option value="20" selected>20%</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header"><span class="card-title">{{ tr('Napomena') }}</span></div>
+    <div class="card-body">
+      <textarea name="notes" rows="2" placeholder="{{ tr('Slobodan tekst...') }}"></textarea>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;justify-content:flex-end;">
+    <a href="{{ url_for('invoices.index', direction=direction) }}" class="btn btn-secondary">{{ tr('Otkaži') }}</a>
+    <button type="submit" class="btn btn-primary">{{ tr('Dodaj fakturu') }}</button>
+  </div>
+</form>
+{% endblock %}

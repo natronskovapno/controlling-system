@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Web analitika') }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">{{ tr('Web analitika') }}</h1>
+  <p class="page-sub">
+    demo-venue.rs · Cloudflare Web Analytics ·
+    <span style="color:var(--ink-muted)">{{ tr('datumi su UTC') }}</span>
+  </p>
+</div>
+
+{# ── Staleness warning ───────────────────────────────────────────────── #}
+{% if stale_days is not none and stale_days > 3 %}
+<div class="card" style="margin-bottom:20px;border-left:3px solid var(--red);padding:12px 16px">
+  <strong style="color:var(--red)">{{ tr('Podaci nisu sveži.') }}</strong>
+  {{ tr("Poslednji ingestovan dan je star") }} {{ stale_days }} {{ tr('dana.') }}
+  {{ tr('Cloudflare čuva samo ~30 dana na besplatnom planu — posle toga se gubi trajno.') }}
+  {% for c in cursors %}{% if c.last_error %}
+    <div style="margin-top:6px;font-size:.78rem;color:var(--ink-muted)">
+      {{ c.host }}: {{ c.last_error }}
+    </div>
+  {% endif %}{% endfor %}
+</div>
+{% endif %}
+
+{# ── Filters ─────────────────────────────────────────────────────────── #}
+<form method="get" class="filter-bar" style="margin-bottom:24px;">
+  <div class="filter-row">
+    <div class="filter-group">
+      <label class="filter-label">{{ tr('Period') }}</label>
+      <select name="preset" class="filter-input" onchange="this.form.submit()">
+        <option value="7d"         {% if filters.preset == '7d'         %}selected{% endif %}>{{ tr('Poslednjih 7 dana') }}</option>
+        <option value="30d"        {% if filters.preset == '30d'        %}selected{% endif %}>{{ tr('Poslednjih 30 dana') }}</option>
+        <option value="month"      {% if filters.preset == 'month'      %}selected{% endif %}>{{ tr('Ovaj mesec') }}</option>
+        <option value="last_month" {% if filters.preset == 'last_month' %}selected{% endif %}>{{ tr('Prošli mesec') }}</option>
+        <option value="year"       {% if filters.preset == 'year'       %}selected{% endif %}>{{ tr('Ova godina') }}</option>
+        <option value="all"        {% if filters.preset == 'all'        %}selected{% endif %}>{{ tr('Sve') }}</option>
+        <option value="custom"     {% if filters.preset == 'custom'     %}selected{% endif %}>{{ tr('Prilagođeno') }}</option>
+      </select>
+    </div>
+
+    {% if filters.preset == 'custom' %}
+    <div class="filter-group">
+      <label class="filter-label">{{ tr('Od') }}</label>
+      <input type="date" name="date_from" value="{{ filters.date_from }}" class="filter-input">
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">{{ tr('Do') }}</label>
+      <input type="date" name="date_to" value="{{ filters.date_to }}" class="filter-input">
+    </div>
+    {% endif %}
+
+    <div class="filter-group">
+      <label class="filter-label">{{ tr('Metrika') }}</label>
+      <select name="metric" class="filter-input" onchange="this.form.submit()">
+        <option value="visits"    {% if filters.metric == 'visits'    %}selected{% endif %}>{{ tr('Posete') }}</option>
+        <option value="pageviews" {% if filters.metric == 'pageviews' %}selected{% endif %}>{{ tr('Pregledi stranica') }}</option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label">{{ tr('Botovi') }}</label>
+      <select name="bots" class="filter-input" onchange="this.form.submit()">
+        <option value="0" {% if filters.bots == '0' %}selected{% endif %}>{{ tr('Isključeni') }}</option>
+        <option value="1" {% if filters.bots == '1' %}selected{% endif %}>{{ tr('Uključeni') }}</option>
+      </select>
+    </div>
+
+    <input type="hidden" name="hour_mode" value="{{ filters.hour_mode }}">
+
+    <div class="filter-group" style="align-self:flex-end">
+      <button type="submit" class="btn btn--primary">{{ tr('Primeni') }}</button>
+      <a href="{{ url_for('web_analytics.index') }}" class="btn btn--ghost" style="margin-left:6px">{{ tr('Resetuj') }}</a>
+    </div>
+  </div>
+</form>
+
+{% if not daily %}
+  <div class="empty-state">
+    <p>{{ tr('Nema podataka za izabrani period.') }}</p>
+    <p style="font-size:.8rem;color:var(--ink-muted)">{{ tr("Praćenje je počelo 10.09.2026. Ingestija se pokreće automatski pri prvom otvaranju sistema svakog dana, ili ručno preko modula Ingestion.") }}</p>
+  </div>
+{% else %}
+
+{# ── KPIs ────────────────────────────────────────────────────────────── #}
+<div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:28px;">
+
+  <div class="kpi-card" style="border-left:3px solid var(--green)">
+    <div class="kpi-label">{{ tr('Posete') }}</div>
+    <div class="kpi-value" style="color:var(--green)">{{ "{:,.0f}".format(kpi.visits).replace(",",".") }}</div>
+    <div class="kpi-sub">{{ kpi.days }} {{ tr('dana sa podacima') }}</div>
+  </div>
+
+  <div class="kpi-card" style="border-left:3px solid #2980b9">
+    <div class="kpi-label">{{ tr('Pregledi stranica') }}</div>
+    <div class="kpi-value" style="color:#2980b9">{{ "{:,.0f}".format(kpi.pageviews).replace(",",".") }}</div>
+    <div class="kpi-sub">{{ kpi.per_visit }} {{ tr('po poseti') }}</div>
+  </div>
+
+  <div class="kpi-card" style="border-left:3px solid #8e44ad">
+    <div class="kpi-label">{{ tr('Prosečno dnevno') }}</div>
+    <div class="kpi-value" style="color:#8e44ad">{{ kpi.avg_daily }}</div>
+    <div class="kpi-sub">{{ tr('poseta po danu') }}</div>
+  </div>
+
+  <div class="kpi-card" style="border-left:3px solid #e67e22">
+    <div class="kpi-label">{{ tr('Najjači dan') }}</div>
+    <div class="kpi-value" style="color:#e67e22">{{ kpi.peak_visits }}</div>
+    <div class="kpi-sub">{{ kpi.peak_date or '—' }}</div>
+  </div>
+
+  <div class="kpi-card" style="border-left:3px solid var(--ink-muted)">
+    <div class="kpi-label">{{ tr('Srbija') }}</div>
+    <div class="kpi-value">{{ kpi.rs_pct }}<span style="font-size:.8rem;font-weight:400;color:var(--ink-muted)">%</span></div>
+    <div class="kpi-sub">{{ kpi.foreign_visits }} {{ tr('iz inostranstva') }}</div>
+  </div>
+
+</div>
+
+{% if filters.bots == '0' and kpi.bot_visits %}
+<div style="margin:-14px 0 24px;font-size:.78rem;color:var(--ink-muted)">
+  {{ tr('Isključeno') }} {{ kpi.bot_visits }} {{ tr("poseta klasifikovanih kao botovi.") }}
+</div>
+{% endif %}
+
+{# ── Daily timeline ──────────────────────────────────────────────────── #}
+<div class="card" style="margin-bottom:20px;padding:18px">
+  <div style="font-size:.95rem;font-weight:700;margin-bottom:4px">{{ tr('Kretanje po danima') }}</div>
+  <div style="font-size:.78rem;color:var(--ink-muted);margin-bottom:18px">
+    {{ tr('Posete') if filters.metric == 'visits' else tr('Pregledi stranica') }} ·
+    {{ filters.date_from }} → {{ filters.date_to }}
+  </div>
+
+  <div style="display:flex;align-items:flex-end;gap:3px;height:180px;
+              border-bottom:1px solid var(--border-soft);padding-bottom:2px;overflow-x:auto">
+    {% for d in daily %}
+    <div style="flex:1 0 14px;min-width:14px;display:flex;flex-direction:column;
+                justify-content:flex-end;height:100%"
+         title="{{ d.date }} — {{ d.visits }} {{ tr('poseta') }}, {{ d.pageviews }} {{ tr('pregleda') }}">
+      <div style="height:{{ d.pct }}%;min-height:2px;background:var(--green);
+                  border-radius:2px 2px 0 0;opacity:.85"></div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div style="display:flex;gap:3px;margin-top:6px;overflow-x:auto">
+    {% for d in daily %}
+    <div style="flex:1 0 14px;min-width:14px;text-align:center;font-size:.6rem;
+                color:var(--ink-muted);white-space:nowrap">
+      {% if loop.length <= 14 or loop.index0 % (loop.length // 10 + 1) == 0 %}{{ tr(d.label) }}{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{# ── 24h cycle ───────────────────────────────────────────────────────── #}
+<div class="card" style="margin-bottom:20px;padding:18px">
+  <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:4px">
+    <span style="font-size:.95rem;font-weight:700">{{ tr('Raspodela tokom dana') }}</span>
+    <span style="margin-left:auto;display:flex;gap:4px">
+      <a href="{{ url_for('web_analytics.index', preset=filters.preset, date_from=filters.date_from, date_to=filters.date_to, bots=filters.bots, metric=filters.metric, hour_mode='avg') }}"
+         class="btn {{ 'btn--primary' if filters.hour_mode == 'avg' else 'btn--ghost' }}"
+         style="font-size:.72rem;padding:4px 10px">{{ tr('Prosek') }}</a>
+      <a href="{{ url_for('web_analytics.index', preset=filters.preset, date_from=filters.date_from, date_to=filters.date_to, bots=filters.bots, metric=filters.metric, hour_mode='total') }}"
+         class="btn {{ 'btn--primary' if filters.hour_mode == 'total' else 'btn--ghost' }}"
+         style="font-size:.72rem;padding:4px 10px">{{ tr('Ukupno') }}</a>
+    </span>
+  </div>
+  <div style="font-size:.78rem;color:var(--ink-muted);margin-bottom:18px">
+    {% if filters.hour_mode == 'avg' %}
+      {{ tr('Prosek po satu, preko') }} {{ active_days }} {{ 'dana' if active_days != 1 else 'dan' }} {{ tr("sa podacima") }}
+    {% else %}
+      {{ tr('Ukupno po satu za ceo period') }}
+    {% endif %}
+    {{ tr('· UTC (lokalno vreme je +2h leti, +1h zimi)') }}
+    {% if busiest %} {{ tr('· najjači sat:') }} {{ "%02d"|format(busiest.hour) }}:00{% endif %}
+  </div>
+
+  <div style="display:flex;align-items:flex-end;gap:4px;height:150px;
+              border-bottom:1px solid var(--border-soft);padding-bottom:2px">
+    {% for h in hourly %}
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%"
+         title="{{ '%02d'|format(h.hour) }}:00 — {{ h.value }}{{ tr(' prosečno') if filters.hour_mode == 'avg' else '' }}">
+      <div style="height:{{ h.pct }}%;min-height:2px;
+                  background:{{ '#2980b9' if h.value else 'var(--border-soft)' }};
+                  border-radius:2px 2px 0 0;opacity:.85"></div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div style="display:flex;gap:4px;margin-top:6px">
+    {% for h in hourly %}
+    <div style="flex:1;text-align:center;font-size:.6rem;color:var(--ink-muted)">
+      {% if h.hour % 3 == 0 %}{{ "%02d"|format(h.hour) }}{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{# ── Breakdowns ──────────────────────────────────────────────────────── #}
+{# Breakdown lists only ever grow, so everything past `limit` is hidden
+   behind a toggle. `tid` must be unique per list on the page — it is what
+   the toggle script selects on. #}
+{% macro bar_list(rows, label_key, color, tid, limit=5) %}
+<table class="data-table" style="font-size:.8rem;width:100%">
+  <tbody>
+    {% for r in rows %}
+    <tr {% if loop.index > limit %}class="wa-extra wa-x-{{ tid }}" style="display:none"{% endif %}>
+      <td style="width:38%">{{ r[label_key] if r[label_key] else '—' }}</td>
+      <td style="width:44%">
+        <div style="background:var(--canvas-warm);border-radius:3px;height:8px;overflow:hidden">
+          <div style="width:{{ r.pct }}%;height:100%;background:{{ color }};opacity:.8"></div>
+        </div>
+      </td>
+      <td style="text-align:right;width:9%;font-weight:600">{{ r.visits }}</td>
+      <td style="text-align:right;width:9%;color:var(--ink-muted)">{{ r.pct }}%</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{{ more_btn(rows|length, limit, tid) }}
+{% endmacro %}
+
+{% macro more_btn(total, limit, tid) %}
+{% if total > limit %}
+<button type="button" class="wa-more" data-tid="{{ tid }}"
+        data-total="{{ total }}" data-open="0"
+        style="margin-top:8px;background:none;border:0;padding:2px 0;cursor:pointer;
+               font-size:.72rem;color:var(--ink-muted);text-decoration:underline">
+  {{ tr('Prikaži sve (') }}{{ total }})
+</button>
+{% endif %}
+{% endmacro %}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+
+  <div class="card" style="padding:18px">
+    <div style="font-size:.95rem;font-weight:700;margin-bottom:2px">{{ tr('Izvori posete') }}</div>
+    <div style="font-size:.75rem;color:var(--ink-muted);margin-bottom:14px">
+      {{ tr('Grupisano po domenu sa kog je posetilac došao') }}
+    </div>
+    <table class="data-table" style="font-size:.8rem;width:100%">
+      <tbody>
+        {% for c in channels %}
+        <tr {% if loop.index > collapse_at %}class="wa-extra wa-x-channel" style="display:none"{% endif %}>
+          <td style="width:38%">
+            {{ c.channel }}
+            {% if c.hosts and c.hosts|length > 1 %}
+            <div style="font-size:.66rem;color:var(--ink-muted);margin-top:2px">
+              {% for h in c.hosts %}{{ h[0] }}{% if not loop.last %} · {% endif %}{% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td style="width:44%">
+            <div style="background:var(--canvas-warm);border-radius:3px;height:8px;overflow:hidden">
+              <div style="width:{{ c.pct }}%;height:100%;background:#8e44ad;opacity:.8"></div>
+            </div>
+          </td>
+          <td style="text-align:right;width:9%;font-weight:600">{{ c.visits }}</td>
+          <td style="text-align:right;width:9%;color:var(--ink-muted)">{{ c.pct }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {{ more_btn(channels|length, collapse_at, 'channel') }}
+    <div style="font-size:.68rem;color:var(--ink-muted);margin-top:12px;line-height:1.5">{{ tr('„Direktan / bez izvora" uključuje i klikove iz Instagram bio linka — Instagram ne šalje referrer za te posete, pa se ne mogu razdvojiti. Google Maps se ne može razdvojiti od Google pretrage.') }}</div>
+  </div>
+
+  <div class="card" style="padding:18px">
+    <div style="font-size:.95rem;font-weight:700;margin-bottom:2px">{{ tr('Zemlje') }}</div>
+    <div style="font-size:.75rem;color:var(--ink-muted);margin-bottom:14px">
+      {{ tr('Srbija') }} {{ kpi.rs_visits }} {{ tr("· inostranstvo") }} {{ kpi.foreign_visits }}
+    </div>
+    {{ bar_list(countries, 'name', 'var(--green)', 'country', collapse_at) }}
+  </div>
+
+  <div class="card" style="padding:18px">
+    <div style="font-size:.95rem;font-weight:700;margin-bottom:14px">{{ tr('Uređaji') }}</div>
+    {{ bar_list(devices, 'dim_value', '#e67e22', 'device', collapse_at) }}
+    <div style="font-size:.95rem;font-weight:700;margin:20px 0 14px">{{ tr('Operativni sistem') }}</div>
+    {{ bar_list(systems, 'dim_value', '#16a085', 'os', collapse_at) }}
+  </div>
+
+  <div class="card" style="padding:18px">
+    <div style="font-size:.95rem;font-weight:700;margin-bottom:14px">{{ tr('Pregledači') }}</div>
+    {{ bar_list(browsers, 'dim_value', '#2980b9', 'browser', collapse_at) }}
+    {% if pages|length > 1 %}
+    <div style="font-size:.95rem;font-weight:700;margin:20px 0 14px">{{ tr('Stranice') }}</div>
+    {{ bar_list(pages, 'dim_value', '#c0392b', 'page', collapse_at) }}
+    {% endif %}
+  </div>
+
+</div>
+
+{# ── Ingestion state ─────────────────────────────────────────────────── #}
+<div class="card" style="padding:14px 18px;margin-bottom:24px">
+  <div style="font-size:.8rem;color:var(--ink-muted)">
+    {% for c in cursors %}
+      <span style="margin-right:18px">
+        <strong style="color:var(--ink)">{{ c.host or c.site_tag }}</strong>
+        {{ tr('· poslednji dan:') }} {{ c.last_date or '—' }}
+        {{ tr('· ingestija:') }} {{ (c.last_run_at or '—')[:16] }}
+        · <span style="color:{{ 'var(--green)' if c.last_status == 'ok' else 'var(--red)' }}">{{ c.last_status or '—' }}</span>
+      </span>
+    {% else %}
+      {{ tr('Ingestija još nije pokrenuta.') }}
+    {% endfor %}
+  </div>
+</div>
+
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+// Expand/collapse for the breakdown lists. Rows past the cutoff are already
+// rendered, just hidden, so revealing them needs no request.
+document.addEventListener('click', function (e) {
+  var btn = e.target.closest('.wa-more');
+  if (!btn) return;
+  var open = btn.dataset.open === '1';
+  var rows = document.querySelectorAll('.wa-x-' + btn.dataset.tid);
+  for (var i = 0; i < rows.length; i++) {
+    rows[i].style.display = open ? 'none' : '';
+  }
+  btn.dataset.open = open ? '0' : '1';
+  btn.textContent = open
+    ? 'Prikaži sve (' + btn.dataset.total + ')'
+    : 'Prikaži manje';
+});
+</script>
+{% endblock %}

@@ -1,0 +1,446 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Daily Log') }}{% endblock %}
+
+{% macro fmt(val) %}{%- if val is not none -%}{{ "{:,.0f}".format(val).replace(",",".") }}{%- else -%}—{%- endif -%}{% endmacro %}
+{% macro profit_cell(val) %}
+  {%- if val is not none -%}
+    <span style="color:{% if val>=0 %}var(--green){% else %}var(--red){% endif %};font-weight:600;">{{ "{:,.0f}".format(val).replace(",",".") }}</span>
+  {%- else -%}<span style="color:var(--ink-muted);">—</span>{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr("Daily Log") }}</h1>
+    <p class="page-subtitle">{{ count }} {{ tr('događaja') }}</p>
+  </div>
+  <div class="page-header__actions" style="flex-wrap:wrap;gap:6px;">
+    <a href="{{ url_for('daily_log.passthrough_manage') }}" class="btn btn-ghost btn-sm">{{ tr('⚙ Pass-through') }}</a>
+    <a href="{{ url_for('daily_log.event_types_manage') }}" class="btn btn-ghost btn-sm">{{ tr('⚙ Tipovi') }}</a>
+
+    {# ── View toggle ── #}
+    {% set _vparams = filters.copy() %}
+    {% if view == 'detailed' %}
+      {% set _ = _vparams.update({'view': 'compact', 'page': page}) %}
+      <a href="{{ url_for('daily_log.index', **_vparams) }}" class="btn btn-secondary btn-sm">{{ tr("☰ Kompaktno") }}</a>
+    {% else %}
+      {% set _ = _vparams.update({'view': 'detailed', 'page': page}) %}
+      <a href="{{ url_for('daily_log.index', **_vparams) }}" class="btn btn-accent btn-sm">{{ tr('⊞ Detaljno') }}</a>
+    {% endif %}
+
+    <div style="position:relative;display:inline-block;" id="recalc-wrap">
+      <button onclick="document.getElementById('recalc-menu').style.display=document.getElementById('recalc-menu').style.display==='block'?'none':'block'"
+              class="btn btn-ghost btn-sm">{{ tr('↻ Preračunaj ▾') }}</button>
+      <div id="recalc-menu" style="display:none;position:absolute;right:0;top:100%;z-index:50;
+           background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--r-md);
+           box-shadow:0 4px 12px rgba(0,0,0,.1);min-width:220px;padding:6px 0;">
+        <form method="post" action="{{ url_for('daily_log.recalc_new') }}" style="margin:0;">
+          <button type="submit" style="width:100%;text-align:left;padding:8px 16px;border:none;background:none;cursor:pointer;font-size:.83rem;color:var(--ink);"
+                  onclick="return confirm('Preračunaj samo nove (NULL) događaje?')">{{ tr('↻ Preračunaj nove') }}</button>
+        </form>
+        <form method="post" action="{{ url_for('daily_log.recalc_all') }}" style="margin:0;">
+          <button type="submit" style="width:100%;text-align:left;padding:8px 16px;border:none;background:none;cursor:pointer;font-size:.83rem;color:var(--ink);"
+                  onclick="return confirm('Preračunaj SVE događaje?')">{{ tr('↻ Preračunaj sve') }}</button>
+        </form>
+        <form method="post" action="{{ url_for('daily_log.recalc_fixed_costs') }}" style="margin:0;">
+          <button type="submit" style="width:100%;text-align:left;padding:8px 16px;border:none;background:none;cursor:pointer;font-size:.83rem;color:var(--ink);"
+                  onclick="return confirm('Ažuriraj samo fiksne troškove za sve događaje?')">{{ tr('↻ Fiksni troškovi') }}</button>
+        </form>
+        <div style="border-top:1px solid var(--border-soft);margin:4px 0;padding:8px 16px 4px;">
+          <div style="font-size:.72rem;color:var(--ink-muted);margin-bottom:6px;">{{ tr('PRERAČUNAJ PERIOD') }}</div>
+          <form method="post" action="{{ url_for('daily_log.recalc_period') }}" style="display:flex;gap:4px;align-items:center;">
+            <input type="date" name="period_from" style="font-size:.75rem;padding:3px 6px;width:120px;">
+            <span style="font-size:.78rem;">→</span>
+            <input type="date" name="period_to" style="font-size:.75rem;padding:3px 6px;width:120px;">
+            <button type="submit" class="btn btn-primary btn-sm" style="font-size:.72rem;padding:3px 8px;">OK</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <form method="post" action="{{ url_for('daily_log.bulk_confirm') }}" style="display:inline;">
+      <button class="btn btn-ghost btn-sm" onclick="return confirm('Potvrdi sve?')">{{ tr('✓ Potvrdi sve') }}</button>
+    </form>
+    <a href="{{ url_for('daily_log.new') }}" class="btn btn-primary btn-sm">{{ tr('+ Novi događaj') }}</a>
+  </div>
+</div>
+
+<script>
+document.addEventListener('click', function(e) {
+  const wrap = document.getElementById('recalc-wrap');
+  const menu = document.getElementById('recalc-menu');
+  if (wrap && !wrap.contains(e.target)) menu.style.display = 'none';
+});
+  // Scroll to anchor row after inline edit
+  (function(){
+    var h = window.location.hash;
+    if(h){
+      var el = document.querySelector(h);
+      if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+    }
+  })();
+</script>
+
+<!-- Filters -->
+<form method="get" style="margin-bottom:12px;">
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;
+            background:var(--surface);border:1px solid var(--border-soft);
+            border-radius:var(--r-md);padding:10px 14px;">
+  <div style="display:flex;flex-direction:column;gap:3px;">
+    <label style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Od') }}</label>
+    <input type="date" name="date_from" value="{{ filters.date_from }}" style="font-size:.8rem;padding:4px 8px;">
+  </div>
+  <div style="display:flex;flex-direction:column;gap:3px;">
+    <label style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Do') }}</label>
+    <input type="date" name="date_to" value="{{ filters.date_to }}" style="font-size:.8rem;padding:4px 8px;">
+  </div>
+  <div style="display:flex;flex-direction:column;gap:3px;">
+    <label style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Lokacija') }}</label>
+    <select name="venue" style="font-size:.8rem;padding:4px 8px;">
+      <option value="">{{ tr('Sve') }}</option>
+      {% for v in venues %}
+        <option value="{{ v }}" {% if filters.venue|lower==v|lower %}selected{% endif %}>{{ v|capitalize }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:3px;">
+    <label style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Status') }}</label>
+    <select name="status" style="font-size:.8rem;padding:4px 8px;">
+      <option value="">{{ tr('Svi') }}</option>
+      <option value="Confirmed"   {% if filters.status=='Confirmed'   %}selected{% endif %}>{{ tr("Confirmed") }}</option>
+      <option value="Preliminary" {% if filters.status=='Preliminary' %}selected{% endif %}>{{ tr("Preliminary") }}</option>
+    </select>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:3px;">
+    <label style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Pretraga') }}</label>
+    <input type="text" name="search" value="{{ filters.search }}" placeholder="{{ tr('Naziv, organizator...') }}"
+           style="font-size:.8rem;padding:4px 8px;width:160px;">
+  </div>
+  <div style="display:flex;gap:4px;padding-bottom:1px;">
+    <button type="submit" class="btn btn-primary btn-sm">{{ tr('Filtriraj') }}</button>
+    <a href="{{ url_for('daily_log.index') }}" class="btn btn-ghost btn-sm">×</a>
+  </div>
+</div>
+</form>
+
+<!-- Compact table -->
+<div style="border:1px solid var(--border-soft);border-radius:var(--r-md);overflow:hidden;">
+
+{# Column headers #}
+<div style="display:grid;grid-template-columns:92px 68px 1.6fr 140px 72px 105px 105px 105px 80px 90px;
+            background:var(--surface-2,#f0ede8);border-bottom:2px solid var(--border-soft);
+            font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);">
+  <div style="padding:7px 8px;">{{ tr('Datum') }}</div>
+  <div style="padding:7px 6px;">{{ tr('Lok.') }}</div>
+  <div style="padding:7px 10px;">{{ tr('Naziv / Organizator') }}</div>
+  <div style="padding:7px 10px;">{{ tr('Tip') }}</div>
+  <div style="padding:7px 8px;text-align:right;">{{ tr('Pose.') }}</div>
+  <div style="padding:7px 10px;text-align:right;">{{ tr('Ukupno prihodi') }}</div>
+  <div style="padding:7px 10px;text-align:right;">{{ tr("Gross profit") }}</div>
+  <div style="padding:7px 10px;text-align:right;">{{ tr("Net profit") }}</div>
+  <div style="padding:7px 8px;text-align:center;">{{ tr('Status') }}</div>
+  <div style="padding:7px 8px;text-align:center;">{{ tr('Akcije') }}</div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════
+   COMPACT VIEW (default)
+══════════════════════════════════════════════════════════════════ #}
+{% if view != 'detailed' %}
+
+{# Date groups — date shown inline in first event row, thick border between days #}
+{% set ns = namespace(row=0) %}
+{% for dg in date_groups %}
+
+  {# All venues and events for this date — no separate date header row #}
+  {% for vg in dg.venues %}
+    {% for e in vg.events %}
+    {% set ns.row = ns.row + 1 %}
+    {# Date shown only on first row of each day (first venue, first event) #}
+    {% set is_first_of_day = loop.first and vg == dg.venues[0] %}
+    <div id="row-{{ e.event_id }}" style="display:grid;grid-template-columns:92px 68px 1.6fr 140px 72px 105px 105px 105px 80px 90px;
+                border-top:{% if is_first_of_day %}3px solid var(--ink-muted){% else %}1px solid var(--border-soft){% endif %};
+                align-items:center;font-size:.82rem;
+                background:{% if ns.row is odd %}var(--surface){% else %}var(--surface-alt,#faf9f7){% endif %};">
+      <div style="padding:6px 8px;font-size:.75rem;{% if is_first_of_day %}font-weight:700;color:var(--ink);{% else %}color:transparent;{% endif %}">
+        {{ dg.date if is_first_of_day else '·' }}
+      </div>
+      <div style="padding:6px 6px;">
+        <span class="badge {{ vg.badge }}" style="font-size:.68rem;padding:2px 7px;">{{ vg.label }}</span>
+      </div>
+      <div style="padding:6px 10px;overflow:hidden;">
+        <div style="font-weight:600;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          {{ e.event_name or '—' }}
+        </div>
+        {% if e.organiser %}
+        <div style="font-size:.72rem;color:var(--ink-muted);">{{ e.organiser }}</div>
+        {% endif %}
+      </div>
+      <div style="padding:6px 10px;font-size:.75rem;color:var(--ink-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        {{ e.event_type or '—' }}
+      </div>
+      <div style="padding:6px 8px;text-align:right;color:var(--ink-muted);font-size:.78rem;">{{ e.number_of_visitors or '—' }}</div>
+      <div style="padding:6px 10px;text-align:right;font-size:.82rem;">{{ fmt(e.total_revenues) }}</div>
+      <div style="padding:6px 10px;text-align:right;font-size:.82rem;">{{ profit_cell(e.gross_profit) }}</div>
+      <div style="padding:6px 10px;text-align:right;font-size:.82rem;">{{ profit_cell(e.net_profit) }}</div>
+      <div style="padding:6px 8px;text-align:center;">
+        {% if e.status=='Confirmed' %}
+          <span style="font-size:.72rem;background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-weight:600;">✓</span>
+        {% else %}
+          <span style="font-size:.72rem;background:#fef3cd;color:#856404;padding:2px 8px;border-radius:4px;font-weight:600;white-space:nowrap;">{{ tr('Prel') }}</span>
+        {% endif %}
+      </div>
+      <div style="padding:6px 8px;display:flex;gap:8px;align-items:center;justify-content:center;">
+        <a href="{{ url_for('daily_log.detail', event_id=e.event_id) }}"
+           class="btn btn-ghost btn-sm" style="font-size:.72rem;padding:2px 8px;" title="{{ tr('Detalji') }}">→</a>
+        <a href="{{ url_for('daily_log.group_edit', date_str=dg.date, venue_str=vg.venue) }}"
+           class="btn btn-ghost btn-sm" style="font-size:.72rem;padding:2px 8px;" title="{{ tr('Izmeni') }}">✎</a>
+      </div>
+    </div>
+    {% endfor %}
+  {% endfor %}
+
+{% else %}
+<div style="padding:24px;text-align:center;color:var(--ink-muted);font-size:.85rem;">
+  {{ tr('Nema pronađenih događaja.') }} <a href="{{ url_for('daily_log.new') }}">{{ tr('Dodaj prvi.') }}</a>
+</div>
+{% endfor %}
+
+{# ══════════════════════════════════════════════════════════════════
+   DETAILED VIEW — flat sortable table, all fields per row
+══════════════════════════════════════════════════════════════════ #}
+{% else %}
+
+<style>
+.detail-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .72rem;
+  table-layout: fixed;
+}
+.detail-tbl thead tr {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--canvas-warm);
+}
+.detail-tbl th {
+  padding: 6px 4px; text-align: right; font-weight: 600; font-size: .66rem;
+  color: var(--ink-muted); border-bottom: 2px solid var(--border-soft);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  cursor: pointer; user-select: none;
+}
+.detail-tbl th.left { text-align: left; }
+.detail-tbl th:hover { color: var(--ink); }
+.detail-tbl th.sorted-asc::after  { content: ' ↑'; color: var(--accent); }
+.detail-tbl th.sorted-desc::after { content: ' ↓'; color: var(--accent); }
+.detail-tbl td {
+  padding: 4px 4px; text-align: right; border-bottom: 1px solid var(--border-soft);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.detail-tbl td.left { text-align: left; }
+.detail-tbl tr:hover td { background: var(--canvas-warm); }
+.detail-tbl .pos { color: var(--green); font-weight: 600; }
+.detail-tbl .neg { color: var(--red);   font-weight: 600; }
+.detail-tbl .muted { color: var(--ink-muted); }
+.detail-tbl .sep { border-left: 2px solid var(--border-soft); }
+.detail-tbl .total-col { font-weight: 600; background: rgba(0,0,0,.02); }
+.detail-tbl tr:hover .total-col { background: var(--canvas-warm); }
+/* Day grouping — thick top border on every first row of a new date */
+.detail-tbl tr.day-first td { border-top: 3px solid var(--ink-muted); }
+</style>
+
+<table class="detail-tbl" id="detail-tbl">
+<colgroup>
+  <col style="width:78px">   {# date #}
+  <col style="width:46px">   {# venue #}
+  <col style="width:8.5%">   {# type #}
+  <col style="width:9.5%">   {# name #}
+  <col style="width:8%">     {# organiser #}
+  <col style="width:38px">   {# visitors #}
+  <col style="width:32px">   {# status #}
+  <col style="width:5.5%">   {# šank #}
+  <col style="width:4.5%">   {# b2b #}
+  <col style="width:4%">     {# 3rd #}
+  <col style="width:3.5%">   {# renta #}
+  <col style="width:3.5%">   {# karte #}
+  <col style="width:3.5%">   {# ost.prih #}
+  <col style="width:5.5%">   {# =prihodi #}
+  <col style="width:4.5%">   {# cogs #}
+  <col style="width:4.5%">   {# zarade #}
+  <col style="width:3.5%">   {# radnici #}
+  <col style="width:3.5%">   {# muzičari #}
+  <col style="width:3.5%">   {# oprema #}
+  <col style="width:3.5%">   {# reklama #}
+  <col style="width:3.5%">   {# kartica #}
+  <col style="width:3.5%">   {# ost.rash #}
+  <col style="width:5.5%">   {# =rashodi #}
+  <col style="width:5.5%">   {# bruto #}
+  <col style="width:4.5%">   {# fiksni #}
+  <col style="width:5.5%">   {# neto #}
+  <col style="width:26px">   {# → #}
+</colgroup>
+<thead>
+  <tr>
+    <th class="left" data-col="date">{{ tr('Datum') }}</th>
+    <th class="left" data-col="venue">{{ tr('Lok.') }}</th>
+    <th class="left" data-col="event_type">{{ tr('Tip događaja') }}</th>
+    <th class="left" data-col="event_name">{{ tr('Naziv') }}</th>
+    <th class="left" data-col="organiser">{{ tr('Organizator') }}</th>
+    <th data-col="visitors" title="{{ tr('Posetioci') }}">{{ tr("Pos.") }}</th>
+    <th data-col="status" title="{{ tr('Status') }}">{{ tr("St.") }}</th>
+    <th class="sep" data-col="sales_net">{{ tr('Šank') }}</th>
+    <th data-col="biz_bills">B2B</th>
+    <th data-col="third_party">3rd</th>
+    <th data-col="venue_rent">{{ tr("Renta") }}</th>
+    <th data-col="ticket_own">{{ tr("Karte") }}</th>
+    <th data-col="other_rev">{{ tr("Ost.P") }}</th>
+    <th class="total-col" data-col="total_rev" style="color:var(--ink);">{{ tr('=Prihodi') }}</th>
+    <th class="sep" data-col="cogs">COGS</th>
+    <th data-col="wages">{{ tr('Zarade') }}</th>
+    <th data-col="laborers">{{ tr("Radn.") }}</th>
+    <th data-col="musicians">{{ tr("Muz.") }}</th>
+    <th data-col="equipment">{{ tr("Opr.") }}</th>
+    <th data-col="advertising">{{ tr("Rek.") }}</th>
+    <th data-col="debit_card">{{ tr("Kart.") }}</th>
+    <th data-col="other_exp">{{ tr("Ost.R") }}</th>
+    <th class="total-col" data-col="total_exp" style="color:var(--ink);">{{ tr('=Rashodi') }}</th>
+    <th class="sep total-col" data-col="gross_profit">{{ tr('Bruto P.') }}</th>
+    <th data-col="fixed_profit">{{ tr("Fiksni") }}</th>
+    <th class="total-col" data-col="net_profit" style="color:var(--ink);">{{ tr('Neto P.') }}</th>
+    <th class="sep" style="cursor:default;"></th>
+  </tr>
+</thead>
+<tbody id="detail-tbody">
+{% set prev = namespace(date='') %}
+{% for e in events %}
+{% set is_new_day = e.date != prev.date %}
+{% set prev.date = e.date %}
+<tr class="{{ 'day-first' if is_new_day else '' }}"
+    data-date="{{ e.date }}" data-venue="{{ e.venue }}"
+    data-event_type="{{ e.event_type }}" data-event_name="{{ e.event_name or '' }}"
+    data-organiser="{{ e.organiser or '' }}"
+    data-visitors="{{ e.number_of_visitors or 0 }}"
+    data-status="{{ e.status }}"
+    data-sales_net="{{ e._sales_net or 0 }}"
+    data-biz_bills="{{ e._biz_bills or 0 }}"
+    data-third_party="{{ e._third_party or 0 }}"
+    data-venue_rent="{{ e.venue_rent_override or e.venue_rent or 0 }}"
+    data-ticket_own="{{ e.ticket_sales_own_override or e.ticket_sales_own or 0 }}"
+    data-other_rev="{{ e.other_revenues or 0 }}"
+    data-total_rev="{{ e.total_revenues or 0 }}"
+    data-cogs="{{ e._cogs or 0 }}"
+    data-wages="{{ e._wages or 0 }}"
+    data-laborers="{{ e._laborers or 0 }}"
+    data-musicians="{{ e.musicians_fee or 0 }}"
+    data-equipment="{{ e.equipment_expenses or 0 }}"
+    data-advertising="{{ e.advertising or 0 }}"
+    data-debit_card="{{ e.debit_card_expenses_variable or 0 }}"
+    data-other_exp="{{ e.other_expenses or 0 }}"
+    data-total_exp="{{ e.total_expenses or 0 }}"
+    data-gross_profit="{{ e.gross_profit or 0 }}"
+    data-fixed_profit="{{ e.fixed_profit or 0 }}"
+    data-net_profit="{{ e.net_profit or 0 }}">
+  <td class="left" style="font-weight:700;">{{ e.date if is_new_day else '' }}</td>
+  <td class="left"><span class="badge {{ e._vbadge }}" style="font-size:.62rem;padding:1px 5px;">{{ e._vlabel }}</span></td>
+  <td class="left muted" title="{{ e.event_type or '' }}">{{ e.event_type or '—' }}</td>
+  <td class="left" style="font-weight:500;" title="{{ e.event_name or '' }}">{{ e.event_name or '—' }}</td>
+  <td class="left muted" title="{{ e.organiser or '' }}">{{ e.organiser or '—' }}</td>
+  <td class="muted" style="text-align:center;">{{ e.number_of_visitors or '—' }}</td>
+  <td style="text-align:center;">
+    {% if e.status=='Confirmed' %}
+      <span style="font-size:.64rem;background:#d1fae5;color:#065f46;padding:1px 5px;border-radius:3px;font-weight:600;">✓</span>
+    {% else %}
+      <span style="font-size:.64rem;background:#fef3cd;color:#856404;padding:1px 5px;border-radius:3px;font-weight:600;">P</span>
+    {% endif %}
+  </td>
+  <td class="sep">{{ fmt(e._sales_net)   if e._sales_net   else '—' }}</td>
+  <td>{{ fmt(e._biz_bills)              if e._biz_bills    else '—' }}</td>
+  <td>{{ fmt(e._third_party)            if e._third_party  else '—' }}</td>
+  <td>{{ fmt(e.venue_rent_override or e.venue_rent)        if (e.venue_rent_override or e.venue_rent) else '—' }}</td>
+  <td>{{ fmt(e.ticket_sales_own_override or e.ticket_sales_own) if (e.ticket_sales_own_override or e.ticket_sales_own) else '—' }}</td>
+  <td>{{ fmt(e.other_revenues)          if e.other_revenues else '—' }}</td>
+  <td class="total-col">{{ fmt(e.total_revenues)           if e.total_revenues else '—' }}</td>
+  <td class="sep">{{ fmt(e._cogs)        if e._cogs        else '—' }}</td>
+  <td>{{ fmt(e._wages)                  if e._wages        else '—' }}</td>
+  <td>{{ fmt(e._laborers)               if e._laborers     else '—' }}</td>
+  <td>{{ fmt(e.musicians_fee)           if e.musicians_fee else '—' }}</td>
+  <td>{{ fmt(e.equipment_expenses)      if e.equipment_expenses else '—' }}</td>
+  <td>{{ fmt(e.advertising)             if e.advertising   else '—' }}</td>
+  <td>{{ fmt(e.debit_card_expenses_variable) if e.debit_card_expenses_variable else '—' }}</td>
+  <td>{{ fmt(e.other_expenses)          if e.other_expenses else '—' }}</td>
+  <td class="total-col">{{ fmt(e.total_expenses)           if e.total_expenses else '—' }}</td>
+  <td class="sep total-col {% if e.gross_profit is not none %}{% if e.gross_profit >= 0 %}pos{% else %}neg{% endif %}{% endif %}">
+    {{ fmt(e.gross_profit) if e.gross_profit is not none else '—' }}
+  </td>
+  <td class="muted">{{ fmt(e.fixed_profit) if e.fixed_profit is not none else '—' }}</td>
+  <td class="total-col {% if e.net_profit is not none %}{% if e.net_profit >= 0 %}pos{% else %}neg{% endif %}{% endif %}">
+    {{ fmt(e.net_profit) if e.net_profit is not none else '—' }}
+  </td>
+  <td class="sep" style="text-align:center;">
+    <a href="{{ url_for('daily_log.detail', event_id=e.event_id) }}"
+       style="font-size:.64rem;color:var(--ink-muted);text-decoration:none;" title="{{ tr('Detalji') }}">→</a>
+  </td>
+</tr>
+{% else %}
+<tr><td colspan="27" style="text-align:center;padding:24px;color:var(--ink-muted);">
+  {{ tr('Nema pronađenih događaja.') }}
+</td></tr>
+{% endfor %}
+</tbody>
+</table>
+
+<script>
+(function(){
+  var tbl = document.getElementById('detail-tbl');
+  var tbody = document.getElementById('detail-tbody');
+  if(!tbl || !tbody) return;
+  var sortCol = null, sortDir = -1;
+
+  function sortTable(col){
+    if(sortCol === col){ sortDir *= -1; } else { sortCol = col; sortDir = -1; }
+    var rows = Array.from(tbody.querySelectorAll('tr[data-date]'));
+    rows.sort(function(a,b){
+      var av=a.dataset[col]||'', bv=b.dataset[col]||'';
+      var an=parseFloat(av), bn=parseFloat(bv);
+      if(!isNaN(an)&&!isNaN(bn)) return (an-bn)*sortDir;
+      return av.localeCompare(bv,'sr')*sortDir;
+    });
+    // Re-apply day-first after sort, update date cell text
+    var prevDate='';
+    rows.forEach(function(r){
+      var d=r.dataset.date||'';
+      var isNew = d!==prevDate;
+      r.classList.toggle('day-first', isNew);
+      var dc=r.querySelector('td:first-child');
+      if(dc){ dc.textContent=isNew?d:''; dc.style.fontWeight=isNew?'700':''; }
+      prevDate=d;
+      tbody.appendChild(r);
+    });
+    tbl.querySelectorAll('th[data-col]').forEach(function(th){
+      th.classList.remove('sorted-asc','sorted-desc');
+      if(th.dataset.col===sortCol)
+        th.classList.add(sortDir===1?'sorted-asc':'sorted-desc');
+    });
+  }
+
+  tbl.querySelectorAll('th[data-col]').forEach(function(th){
+    th.addEventListener('click',function(){ sortTable(th.dataset.col); });
+  });
+})();
+</script>
+
+{% endif %}{# /view #}
+
+</div>
+
+{% if total_pages > 1 %}
+<div class="pagination" style="margin-top:16px;">
+  {% if page>1 %}<a href="{{ url_for('daily_log.index', page=page-1, view=view, **filters) }}">‹</a>{% endif %}
+  {% for p in range(1,total_pages+1) %}
+    {% if p==page %}<span class="current">{{ p }}</span>
+    {% elif p<=3 or p>=total_pages-2 or (p>=page-2 and p<=page+2) %}
+      <a href="{{ url_for('daily_log.index', page=p, view=view, **filters) }}">{{ p }}</a>
+    {% elif p==4 or p==total_pages-3 %}<span>…</span>{% endif %}
+  {% endfor %}
+  {% if page<total_pages %}<a href="{{ url_for('daily_log.index', page=page+1, view=view, **filters) }}">›</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

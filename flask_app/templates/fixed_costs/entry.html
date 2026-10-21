@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Unos —') }} {{ month_label }} {{ year }}{% endblock %}
+
+{% macro field(col, label, table_data) %}
+<div class="form-group">
+  <label>{{ label }}</label>
+  <input type="number" step="0.01" name="{{ col }}"
+         value="{{ table_data[col] if table_data and table_data[col] else '' }}"
+         placeholder="0.00">
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ month_label }} {{ year }}</h1>
+    <p class="page-subtitle">{{ tr('Unos fiksnih troškova, prihoda i ostalih stavki') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('fixed_costs.index', year=year) }}" class="btn btn-secondary">{{ tr('← Nazad') }}</a>
+  </div>
+</div>
+
+<form method="post">
+  <input type="hidden" name="year"  value="{{ year }}">
+  <input type="hidden" name="month" value="{{ month }}">
+
+  <!-- Month/Year selector -->
+  <div class="card mb-3">
+    <div class="card-header"><span class="card-title">{{ tr('Period') }}</span></div>
+    <div class="card-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>{{ tr('Godina') }}</label>
+          <select name="year" onchange="this.form.year.value=this.value">
+            {% for y in years %}
+              <option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>{{ tr('Mesec') }}</label>
+          <select name="month" onchange="this.form.month.value=this.value">
+            {% for i, m in enumerate(months_sr) %}
+              <option value="{{ i+1 }}" {{ 'selected' if i+1 == month }}>{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fiksni troškovi -->
+  <div class="card mb-3">
+    <div class="card-header">
+      <span class="card-title">{{ tr('Fiksni troškovi') }}</span>
+      {% if costs %}
+        <span class="badge badge-green">{{ tr('Već uneseno') }}</span>
+      {% endif %}
+    </div>
+    <div class="card-body">
+      <div class="form-row">
+        {% for col, label in costs_cols %}
+          {{ field(col, label, costs) }}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Fiksni prihodi -->
+  <div class="card mb-3">
+    <div class="card-header">
+      <span class="card-title">{{ tr('Fiksni prihodi') }}</span>
+      {% if income %}
+        <span class="badge badge-green">{{ tr('Već uneseno') }}</span>
+      {% endif %}
+    </div>
+    <div class="card-body">
+      <div class="form-row">
+        {% for col, label in income_cols %}
+          {{ field(col, label, income) }}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Ostali fiksni -->
+  <div class="card mb-3">
+    <div class="card-header">
+      <span class="card-title">{{ tr('Ostali fiksni troškovi') }}</span>
+      {% if other %}
+        <span class="badge badge-green">{{ tr('Već uneseno') }}</span>
+      {% endif %}
+    </div>
+    <div class="card-body">
+      <div class="form-row">
+        {% for col, label in other_cols %}
+          {{ field(col, label, other) }}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;justify-content:flex-end;">
+    <a href="{{ url_for('fixed_costs.index', year=year) }}" class="btn btn-secondary">{{ tr('Otkaži') }}</a>
+    <button type="submit" class="btn btn-primary">{{ tr('Sačuvaj') }}</button>
+  </div>
+</form>
+{% endblock %}

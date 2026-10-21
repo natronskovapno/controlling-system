@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Projekcije') }}{% endblock %}
+
+{% macro fmt(val) %}{%- if val is not none -%}{{ "{:,.0f}".format(val).replace(",",".") }}{%- else -%}—{%- endif -%}{% endmacro %}
+{% macro fmt_pct(val) %}{%- if val is not none -%}{{ "{:+.1f}".format(val) }}%{%- else -%}—{%- endif -%}{% endmacro %}
+
+{% macro profit_cell(val) %}
+  {%- if val is not none -%}
+    <span style="color:{% if val>=0 %}var(--green){% else %}var(--red){% endif %};font-weight:600;">{{ "{:,.0f}".format(val).replace(",",".") }}</span>
+  {%- else -%}<span style="color:var(--ink-muted);">—</span>{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Projekcije') }}</h1>
+    <p class="page-subtitle">{{ tr('Projekcije finansijskih rezultata po događajima') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('event_type_analysis.index') }}" class="btn btn-ghost btn-sm">{{ tr('📊 Analiza po tipu') }}</a>
+    <a href="{{ url_for('daily_log.index') }}" class="btn btn-ghost btn-sm">{{ tr('📅 Daily Log') }}</a>
+  </div>
+</div>
+
+<!-- Filters -->
+<form method="get" style="margin-bottom:16px;">
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;
+            background:var(--surface);border:1px solid var(--border-soft);
+            border-radius:var(--r-md);padding:10px 14px;">
+  <div style="display:flex;flex-direction:column;gap:3px;">
+    <label style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Od') }}</label>
+    <input type="date" name="date_from" value="{{ filters.date_from }}" style="font-size:.8rem;padding:4px 8px;">
+  </div>
+  <div style="display:flex;flex-direction:column;gap:3px;">
+    <label style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Do') }}</label>
+    <input type="date" name="date_to" value="{{ filters.date_to }}" style="font-size:.8rem;padding:4px 8px;">
+  </div>
+  <div style="display:flex;flex-direction:column;gap:3px;">
+    <label style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Lokacija') }}</label>
+    <select name="venue" style="font-size:.8rem;padding:4px 8px;">
+      <option value="all">{{ tr('Sve') }}</option>
+      {% for v in venues %}
+        <option value="{{ v }}" {% if filters.venue==v %}selected{% endif %}>{{ venue_display.get(v, v|capitalize) }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn btn-primary btn-sm">{{ tr('Primeni') }}</button>
+  <a href="{{ url_for('projections.index') }}" class="btn btn-ghost btn-sm">{{ tr('Reset') }}</a>
+</div>
+</form>
+
+<!-- Info Box -->
+<div style="background:var(--surface-accent);border-left:3px solid var(--primary);
+            padding:10px 14px;margin-bottom:16px;border-radius:var(--r-md);">
+  <div style="font-size:.82rem;color:var(--ink);">
+    <strong>{{ tr("📈 Logika projekcija:") }}</strong> {{ tr("Projekcije se baziraju na prosečnim vrednostima poslednjih 12 meseci za svaki tip događaja i lokaciju. Poređenje pokazuje da li je ostvareni rezultat bolji (🟢), u okviru tolerancije (🟡), ili lošiji (🔴) od projekcije.") }}</div>
+</div>
+
+{% if not months %}
+  <div class="empty-state">
+    <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M12 6v6l4 2"/>
+    </svg>
+    <p class="empty-title">{{ tr('Nema događaja u odabranom periodu') }}</p>
+    <p class="empty-subtitle">{{ tr('Dodajte događaje u Daily Log-u da biste videli projekcije') }}</p>
+    <a href="{{ url_for('daily_log.new') }}" class="btn btn-primary" style="margin-top:12px;">{{ tr('+ Dodaj događaj') }}</a>
+  </div>
+{% else %}
+
+<!-- Monthly Cards -->
+{% for month in months %}
+<div class="month-card" style="margin-bottom:16px;background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--r-md);overflow:hidden;">
+  
+  <!-- Month Header (Collapsible) -->
+  <div class="month-header" style="padding:12px 16px;cursor:pointer;user-select:none;
+              background:linear-gradient(to bottom, var(--surface), var(--surface-muted));
+              border-bottom:1px solid var(--border-soft);"
+       onclick="toggleMonth('month-{{ loop.index }}')">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:1.1rem;font-weight:600;color:var(--ink);">📅 {{ month.month_label }}</span>
+        <span class="badge badge-gray" style="font-size:.72rem;">{{ month.event_count }} {{ tr('događaja') }}</span>
+      </div>
+      <div style="display:flex;gap:16px;align-items:center;">
+        <!-- Projected Stats -->
+        <div style="text-align:right;">
+          <div style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;">{{ tr("Projekcija") }}</div>
+          <div style="font-size:.85rem;color:var(--green);font-weight:500;">{{ tr('Prihod:') }} {{ fmt(month.projected_revenue) }}</div>
+          <div style="font-size:.85rem;color:var(--red);font-weight:500;">{{ tr('Troškovi:') }} {{ fmt(month.projected_expenses) }}</div>
+          <div style="font-size:.85rem;color:var(--ink);font-weight:600;">{{ tr("Profit:") }} {{ fmt(month.projected_profit) }}</div>
+          {% if month.standalone_income %}
+            {% set sa = month.standalone_income %}
+            {% for key, label in [('parking',tr('Parking')),('podnajam',tr('Podnajam')),('sponzori',tr('Sponzori'))] %}
+              {% if sa.get(key) is not none %}
+                <div style="font-size:.75rem;color:var(--green);margin-top:2px;">
+                  {{ label }}: {{ fmt(sa.get(key)) }}{% if key != 'sponzori' %} <span style="font-size:.65rem;color:var(--ink-muted);">(avg)</span>{% endif %}
+                </div>
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+        </div>
+        
+        <!-- Actual Stats (if available) -->
+        {% if month.has_any_actuals %}
+        <div style="text-align:right;">
+          <div style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;">{{ tr("Ostvareno") }}</div>
+          <div style="font-size:.85rem;color:var(--green);font-weight:500;">{{ tr('Prihod:') }} {{ fmt(month.actual_revenue) }}</div>
+          <div style="font-size:.85rem;color:var(--red);font-weight:500;">{{ tr('Troškovi:') }} {{ fmt(month.actual_expenses) }}</div>
+          <div style="font-size:.85rem;color:var(--ink);font-weight:600;">{{ tr("Profit:") }} {{ fmt(month.actual_profit) }}</div>
+        </div>
+        
+        <!-- Variance Badge -->
+        <span class="badge {{ variance_badge(month.profit_variance) }}" style="font-size:.85rem;min-width:70px;text-align:center;">
+          {{ fmt_pct(month.profit_variance) }}
+        </span>
+        {% else %}
+        <span class="badge badge-gray" style="font-size:.75rem;">{{ tr('Budući') }}</span>
+        {% endif %}
+        
+        <!-- Expand/Collapse Icon -->
+        <svg id="icon-month-{{ loop.index }}" style="width:20px;height:20px;color:var(--ink-muted);transition:transform .2s;" 
+             viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M6 8l4 4 4-4"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Month Details (Hidden by default) -->
+  <div id="month-{{ loop.index }}" class="month-details" style="display:none;">
+    
+    <!-- Events Table -->
+    <div style="overflow-x:auto;">
+      <table class="data-table" style="margin:0;">
+        <thead>
+          <tr>
+            <th style="min-width:90px;">{{ tr('Datum') }}</th>
+            <th style="min-width:80px;">{{ tr('Lokacija') }}</th>
+            <th style="min-width:120px;">{{ tr('Tip') }}</th>
+            <th style="min-width:150px;">{{ tr('Naziv') }}</th>
+            <th style="min-width:90px;"></th>
+            <th style="text-align:right;min-width:110px;">{{ tr('Prihod') }}</th>
+            <th style="text-align:right;min-width:100px;">COGS</th>
+            <th style="text-align:right;min-width:100px;">{{ tr('Zarade / Ostalo') }}</th>
+            <th style="text-align:right;min-width:110px;" title="{{ tr('Profit pre honorara i opreme') }}">{{ tr("Profit *") }}</th>
+            <th style="text-align:center;min-width:80px;">Var %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for evt in month.events %}
+            {% set is_future = evt.date > today %}
+            {% set row_opacity = '0.65' if is_future else '1' %}
+            {% set is_first_of_day = loop.first or evt.date != month.events[loop.index0 - 1].date %}
+            
+            <!-- Projected Row -->
+            <tr style="background:var(--surface-accent);opacity:{{ row_opacity }};
+                       border-top:{% if is_first_of_day and not loop.first %}3px solid var(--ink-muted){% else %}1px solid var(--border-soft){% endif %};">
+              <td style="font-size:.82rem;color:var(--ink);padding:6px 10px;{% if is_first_of_day %}font-weight:700;{% else %}color:transparent;{% endif %}">
+                {{ evt.date if is_first_of_day else '·' }}
+                {% if is_future and is_first_of_day %}
+                  <span class="badge badge-gray" style="font-size:.65rem;margin-left:4px;">{{ tr('Budući') }}</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge {{ 'badge-blue' if evt.venue|lower == 'garden' else 'badge-amber' if evt.venue|lower == 'corner' else 'badge-gray' }}" 
+                      style="font-size:.75rem;">
+                  {{ venue_display.get(evt.venue|lower, evt.venue) }}
+                </span>
+              </td>
+              <td style="font-size:.8rem;color:var(--ink-muted);">{{ evt.event_type or '—' }}</td>
+              <td style="font-size:.8rem;color:var(--ink);">{{ evt.event_name or '—' }}</td>
+              <td style="font-size:.72rem;color:var(--ink-muted);font-style:italic;">
+                {{ tr("Projekcija") }}
+                {% if evt.projected and not evt.projected.insufficient_data and evt.projected.sample_size > 0 %}
+                  <span style="opacity:.7;">(n={{ evt.projected.sample_size }})</span>
+                {% endif %}
+                {% if evt.projected and evt.projected.no_data %}
+                  <span class="badge badge-red" style="font-size:.65rem;margin-left:4px;">{{ tr('Nema istorije') }}</span>
+                {% elif evt.projected and evt.projected.insufficient_data %}
+                  <span class="badge badge-gray" style="font-size:.65rem;margin-left:4px;" title="Manje od {{ min_sample_size }} istorijskih događaja">{{ tr("Nedovoljno podataka (n=") }}{{ evt.projected.sample_size }})</span>
+                {% else %}
+                  {# ── Tier badge ─────────────────────────────────── #}
+                  {% if evt.projected.is_b2b %}
+                    <span class="badge badge-amber" style="font-size:.62rem;margin-left:3px;" title="{{ tr('B2B događaj — prihod je ugovoren. Projekcija je istorijska, preporučuje se ručni unos.') }}">B2B</span>
+                  {% elif evt.projected.proj_tier == 'organiser' %}
+                    <span class="badge badge-blue" style="font-size:.62rem;margin-left:3px;" title="{{ tr('Projekcija bazirana na istoriji organizatora') }}">{{ tr("org.") }}</span>
+                  {% elif evt.projected.proj_tier == 'recency' %}
+                    <span class="badge badge-purple" style="font-size:.62rem;margin-left:3px;" title="{{ tr('Nestabilna kategorija — koristi se ponderisana istorija po vremenskoj blizini') }}">{{ tr("trend") }}</span>
+                  {% endif %}
+                  {# ── Reliability indicator ───────────────────────── #}
+                  {% if evt.projected.reliability == 'high' %}
+                    <span title="{{ tr('Pouzdana kategorija') }} (CV={{ evt.projected.bucket_cv }})" style="margin-left:3px;font-size:.7rem;color:var(--green);">●</span>
+                  {% elif evt.projected.reliability == 'medium' %}
+                    <span title="{{ tr('Umereno pouzdana kategorija') }} (CV={{ evt.projected.bucket_cv }})" style="margin-left:3px;font-size:.7rem;color:var(--amber);">●</span>
+                  {% else %}
+                    <span title="Nestabilna kategorija — visok raspon rezultata (CV={{ evt.projected.bucket_cv }})" style="margin-left:3px;font-size:.7rem;color:var(--red);">●</span>
+                  {% endif %}
+                {% endif %}
+              </td>
+              <td style="text-align:right;font-size:.85rem;color:var(--ink);">
+                {% if evt.projected and not evt.projected.insufficient_data %}
+                  {{ fmt(evt.projected.revenue) }}
+                  {% if evt.projected.reliability == 'low' and evt.projected.p25 and evt.projected.p75 and evt.projected.p25 != evt.projected.p75 %}
+                    <div style="font-size:.68rem;color:var(--ink-muted);margin-top:1px;" title="{{ tr('Raspon P25–P75 istorijskih vrednosti') }}">
+                      {{ fmt(evt.projected.p25) }}–{{ fmt(evt.projected.p75) }}
+                    </div>
+                  {% endif %}
+                {% else %}—{% endif %}
+              </td>
+              <td style="text-align:right;font-size:.85rem;color:var(--ink-muted);">
+                {% if evt.projected and not evt.projected.insufficient_data %}
+                  {{ fmt(evt.projected.cogs) }}
+                {% else %}—{% endif %}
+              </td>
+              <td style="text-align:right;font-size:.85rem;color:var(--ink-muted);">
+                {% if evt.projected and not evt.projected.insufficient_data %}
+                  {{ fmt((evt.projected.wages or 0) + (evt.projected.laborers or 0) + (evt.projected.labor or 0)) }}
+                {% else %}—{% endif %}
+              </td>
+              <td style="text-align:right;font-size:.85rem;">
+                {% if evt.projected and not evt.projected.insufficient_data %}
+                  {{ profit_cell(evt.projected.net_profit) }}
+                {% else %}—{% endif %}
+              </td>
+              <td style="text-align:center;">—</td>
+            </tr>
+            
+            <!-- Actual Row (if has actuals) -->
+            {% if evt.has_actuals %}
+            <tr style="opacity:{{ row_opacity }};">
+              <td colspan="4"></td>
+              <td style="font-size:.72rem;color:var(--green);font-style:italic;font-weight:600;">
+                {{ tr("Ostvareno") }}
+                {% set event_costs = (evt.get('actual_musicians') or 0) + (evt.get('actual_equipment') or 0) + (evt.get('actual_advertising') or 0) + (evt.get('actual_debit') or 0) + (evt.get('actual_other') or 0) %}
+                {% if event_costs > 0 %}
+                  <span style="font-size:.65rem;opacity:.7;" title="{{ tr('Uključuje honorare/opremu:') }} {{ fmt(event_costs) }}">*</span>
+                {% endif %}
+              </td>
+              <td style="text-align:right;font-size:.85rem;font-weight:600;color:var(--ink);">
+                {{ fmt(evt.get('actual_revenue')) }}
+              </td>
+              <td style="text-align:right;font-size:.85rem;color:var(--ink-muted);">
+                {{ fmt(evt.get('actual_cogs')) }}
+              </td>
+              <td style="text-align:right;font-size:.85rem;color:var(--ink-muted);">
+                {% set full_labor = (evt.get('actual_wages') or 0) + (evt.get('actual_laborers') or 0) + (evt.get('actual_musicians') or 0) + (evt.get('actual_equipment') or 0) + (evt.get('actual_advertising') or 0) + (evt.get('actual_debit') or 0) + (evt.get('actual_other') or 0) %}
+                {{ fmt(full_labor) }}
+              </td>
+              <td style="text-align:right;font-size:.85rem;font-weight:600;">
+                {{ profit_cell(evt.get('actual_net_profit')) }}
+              </td>
+              <td style="text-align:center;">
+                <span class="badge {{ variance_badge(evt.get('profit_variance')) }}" style="font-size:.78rem;">
+                  {{ fmt_pct(evt.get('profit_variance')) }}
+                </span>
+              </td>
+            </tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+      <div style="padding:6px 14px;font-size:.72rem;color:var(--ink-muted);font-style:italic;">
+        {{ tr('* Projekcija profita ne uključuje honorare, opremu, marketing i ostale troškove specifične za događaj — unose se ručno po događaju.') }}
+      </div>
+    </div>
+    
+    <!-- Month Summary Footer -->
+    <div style="padding:12px 16px;background:var(--surface-muted);border-top:1px solid var(--border-soft);
+                display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-size:.8rem;color:var(--ink-muted);">
+        <strong>{{ tr('Ukupno za mesec:') }}</strong>
+      </div>
+      <div style="display:flex;gap:20px;">
+        <div>
+          <span style="font-size:.72rem;color:var(--ink-muted);margin-right:6px;">{{ tr("Projekcija:") }}</span>
+          <span style="font-size:.9rem;font-weight:600;color:var(--ink);">{{ fmt(month.projected_revenue) }} RSD</span>
+        </div>
+        {% if month.has_any_actuals %}
+        <div>
+          <span style="font-size:.72rem;color:var(--ink-muted);margin-right:6px;">{{ tr("Ostvareno:") }}</span>
+          <span style="font-size:.9rem;font-weight:600;color:var(--ink);">{{ fmt(month.actual_revenue) }} RSD</span>
+        </div>
+        <div>
+          <span class="badge {{ variance_badge(month.revenue_variance) }}" style="font-size:.85rem;">
+            {{ fmt_pct(month.revenue_variance) }}
+          </span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  
+</div>
+{% endfor %}
+
+{% endif %}
+
+<script>
+function toggleMonth(monthId) {
+  const details = document.getElementById(monthId);
+  const icon = document.getElementById('icon-' + monthId);
+  
+  if (details.style.display === 'none' || details.style.display === '') {
+    details.style.display = 'block';
+    icon.style.transform = 'rotate(180deg)';
+  } else {
+    details.style.display = 'none';
+    icon.style.transform = 'rotate(0deg)';
+  }
+}
+
+// Optional: Expand first month by default
+document.addEventListener('DOMContentLoaded', function() {
+  // toggleMonth('month-1');
+});
+</script>
+
+{% endblock %}

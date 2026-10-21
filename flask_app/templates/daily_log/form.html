@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left"><h1 class="page-title">{{ title }}</h1></div>
+  <div class="page-header__actions">
+    {% if back_to %}<a href="{{ back_to }}" class="btn btn-secondary">{{ tr('← Nazad') }}</a>
+    {% else %}<a href="{{ url_for('daily_log.index') }}" class="btn btn-secondary">{{ tr('← Nazad') }}</a>{% endif %}
+  </div>
+</div>
+
+<form method="post">
+<input type="hidden" name="back_to" value="{{ back_to }}">
+
+<!-- Osnovni podaci -->
+<div class="card mb-3">
+  <div class="card-header"><span class="card-title">{{ tr('Osnovni podaci') }}</span></div>
+  <div class="card-body">
+    <div class="form-row">
+      <div class="form-group"><label>{{ tr('Datum *') }}</label>
+        <input type="date" name="date" required value="{{ event.date if event else today }}"></div>
+      <div class="form-group"><label>{{ tr('Lokacija *') }}</label>
+        <select name="venue" required>
+          {% for v in venues %}
+            <option value="{{ v }}"
+              {% if event and event.venue|lower==v|lower %}selected
+              {% elif not event and prefill_venue|lower==v|lower %}selected{% endif %}>
+              {{ v|capitalize }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="form-group"><label>{{ tr('Tip događaja') }}
+        <a href="{{ url_for('daily_log.event_types_manage') }}" style="font-size:.75rem;font-weight:400;margin-left:6px;">⚙</a>
+        </label>
+        <select name="event_type">
+          <option value="">—</option>
+          {% for t in event_types %}
+            <option value="{{ t }}" {% if event and event.event_type and event.event_type|lower==t|lower %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="form-group"><label>{{ tr('Status') }}</label>
+        <select name="status">
+          <option value="Confirmed" {% if not event or event.status == 'Confirmed' %}selected{% endif %}>{{ tr("Confirmed") }}</option>
+          <option value="Preliminary" {% if event and event.status == 'Preliminary' %}selected{% endif %}>{{ tr("Preliminary") }}</option>
+        </select></div>
+    </div>
+    <div class="form-row" style="margin-top:12px;">
+      <div class="form-group"><label>{{ tr('Organizator') }}</label>
+        <input type="text" name="organiser" value="{{ event.organiser or '' if event else '' }}"></div>
+      <div class="form-group" style="flex:2;"><label>{{ tr('Naziv događaja') }}</label>
+        <input type="text" name="event_name" value="{{ event.event_name or '' if event else '' }}"></div>
+    </div>
+    <div class="form-row" style="margin-top:12px;">
+      <div class="form-group"><label>{{ tr('Početak') }}</label>
+        {% set _start_h = (event.event_start or '')[:2] if event else '' %}
+        <select name="event_start">
+          <option value="">—</option>
+          {% for h in range(24) %}
+            {% set hh = '%02d'|format(h) %}
+            <option value="{{ hh }}:00" {% if _start_h == hh %}selected{% endif %}>{{ hh }}:00</option>
+          {% endfor %}
+        </select></div>
+      <div class="form-group"><label>{{ tr('Kraj (cutoff za raspodelu)') }}</label>
+        {% set _end_h = (event.event_end or '')[:2] if event else '' %}
+        <select name="event_end">
+          <option value="">—</option>
+          {% for h in range(24) %}
+            {% set hh = '%02d'|format(h) %}
+            <option value="{{ hh }}:00" {% if _end_h == hh %}selected{% endif %}>{{ hh }}:00</option>
+          {% endfor %}
+        </select></div>
+      <div class="form-group"><label>{{ tr('Broj posetilaca') }}</label>
+        <input type="number" name="number_of_visitors" min="0" value="{{ event.number_of_visitors or '' if event else '' }}"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Prihodi manuelni unos -->
+<div class="card mb-3">
+  <div class="card-header"><span class="card-title">{{ tr('Prihodi — manuelni unos / override') }}</span>
+    <span class="text-muted" style="font-size:.78rem;">{{ tr('Prodaja, poslovni računi i karte 3. strane se računaju automatski') }}</span>
+  </div>
+  <div class="card-body">
+
+    {# Override fields for auto values #}
+    <div style="background:var(--accent-bg);border-radius:var(--r-sm);padding:12px;margin-bottom:14px;">
+      <div style="font-size:.78rem;font-weight:600;color:var(--ink-muted);margin-bottom:10px;">
+        {{ tr('OVERRIDE AUTOMATSKIH VREDNOSTI (ostavite prazno da koristite auto vrednost)') }}
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label style="font-size:.78rem;">{{ tr('Prodaja net override') }}</label>
+          <input type="number" step="0.01" name="sales_net_override"
+                 value="{{ event.sales_net_override or '' if event else '' }}" placeholder="auto"></div>
+        <div class="form-group"><label style="font-size:.78rem;">{{ tr('Poslovni računi override') }}</label>
+          <input type="number" step="0.01" name="business_bills_override"
+                 value="{{ event.business_bills_override or '' if event else '' }}" placeholder="auto"></div>
+        <div class="form-group"><label style="font-size:.78rem;">{{ tr("Karte 3. strana override") }}</label>
+          <input type="number" step="0.01" name="third_party_override"
+                 value="{{ event.third_party_override or '' if event else '' }}" placeholder="auto"></div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>{{ tr("Najam lokala (net)") }}
+          {% if invoices_out %}
+          <select name="venue_rent_invoice_id" style="font-size:.78rem;font-weight:400;margin-left:6px;width:auto;">
+            <option value="">{{ tr('— poveži fakturu —') }}</option>
+            {% for inv in invoices_out %}
+              <option value="{{ inv.invoice_id_sef }}"
+                {% if event and event.venue_rent_invoice_id == inv.invoice_id_sef %}selected{% endif %}>
+                {{ inv.invoice_number_sef }} | {{ inv.name or '' }} | {{ "{:,.0f}".format(inv.net_amount).replace(",",".") }} RSD
+              </option>
+            {% endfor %}
+          </select>
+          {% endif %}
+        </label>
+        <input type="number" step="0.01" name="venue_rent"
+               value="{{ event.venue_rent or '' if event else '' }}" placeholder="0.00">
+        <input type="number" step="0.01" name="venue_rent_override"
+               value="{{ event.venue_rent_override or '' if event else '' }}" placeholder="override" style="margin-top:4px;"></div>
+      <div class="form-group">
+        <label>{{ tr("Sopstvene karte (net)") }}
+          {% if bank_credits %}
+          <select name="ticket_sales_bank_tx_id" style="font-size:.78rem;font-weight:400;margin-left:6px;width:auto;">
+            <option value="">{{ tr('— poveži uplatu —') }}</option>
+            {% for tx in bank_credits %}
+              <option value="{{ tx.transaction_id }}"
+                {% if event and event.ticket_sales_bank_tx_id == tx.transaction_id %}selected{% endif %}>
+                {{ tx.date }} | {{ tx.counterparty[:30] }} | {{ "{:,.0f}".format(tx.amount).replace(",",".") }} RSD
+              </option>
+            {% endfor %}
+          </select>
+          {% endif %}
+        </label>
+        <input type="number" step="0.01" name="ticket_sales_own"
+               value="{{ event.ticket_sales_own or '' if event else '' }}" placeholder="0.00">
+        <input type="number" step="0.01" name="ticket_sales_own_override"
+               value="{{ event.ticket_sales_own_override or '' if event else '' }}" placeholder="override" style="margin-top:4px;"></div>
+      <div class="form-group"><label>{{ tr('Ostali prihodi (net)') }}</label>
+        <input type="number" step="0.01" name="other_revenues"
+               value="{{ event.other_revenues or '' if event else '' }}" placeholder="0.00"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Rashodi -->
+<div class="card mb-3">
+  <div class="card-header"><span class="card-title">{{ tr('Rashodi — manuelni unos / override') }}</span>
+    <span class="text-muted" style="font-size:.78rem;">{{ tr('COGS i zarade se računaju automatski') }}</span>
+  </div>
+  <div class="card-body">
+
+    <div style="background:var(--accent-bg);border-radius:var(--r-sm);padding:12px;margin-bottom:14px;">
+      <div style="font-size:.78rem;font-weight:600;color:var(--ink-muted);margin-bottom:10px;">
+        {{ tr("OVERRIDE AUTOMATSKIH VREDNOSTI") }}
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label style="font-size:.78rem;">{{ tr('COGS override') }}</label>
+          <input type="number" step="0.01" name="cogs_override"
+                 value="{{ event.cogs_override or '' if event else '' }}" placeholder="auto"></div>
+        <div class="form-group"><label style="font-size:.78rem;">{{ tr('Zarade override') }}</label>
+          <input type="number" step="0.01" name="wages_override"
+                 value="{{ event.wages_override or '' if event else '' }}" placeholder="auto"></div>
+        <div class="form-group"><label style="font-size:.78rem;">{{ tr('Radnici override') }}</label>
+          <input type="number" step="0.01" name="laborers_override"
+                 value="{{ event.laborers_override or '' if event else '' }}" placeholder="auto"></div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      {% set inv_fields = [
+        ('musicians_fee',    tr('Muzičari / izvođači'), 'musicians_fee_invoice_id'),
+        ('equipment_expenses', tr('Oprema / tehnika'), 'equipment_invoice_id'),
+        ('advertising',      'Marketing',           'advertising_invoice_id'),
+      ] %}
+      {% for field_name, label, inv_col in inv_fields %}
+      <div class="form-group">
+        <label>{{ label }} ({{ tr('neto') }})
+          {% if invoices_in %}
+          <select name="{{ inv_col }}" style="font-size:.78rem;font-weight:400;margin-left:4px;width:auto;">
+            <option value="">{{ tr('— poveži fakturu —') }}</option>
+            {% for inv in invoices_in %}
+              <option value="{{ inv.invoice_id_sef }}"
+                {% if event and event[inv_col] == inv.invoice_id_sef %}selected{% endif %}>
+                {{ inv.invoice_number_sef }} | {{ inv.name or '' }} | {{ "{:,.0f}".format(inv.net_amount).replace(",",".") }} RSD
+              </option>
+            {% endfor %}
+          </select>
+          {% endif %}
+        </label>
+        <input type="number" step="0.01" name="{{ field_name }}"
+               value="{{ event[field_name] or '' if event else '' }}" placeholder="0.00">
+      </div>
+      {% endfor %}
+      <div class="form-group"><label>{{ tr("Kartica — varijabilno (net)") }}</label>
+        <input type="number" step="0.01" name="debit_card_expenses_variable"
+               value="{{ event.debit_card_expenses_variable or '' if event else '' }}" placeholder="0.00"></div>
+      <div class="form-group"><label>{{ tr('Ostali rashodi (net)') }}</label>
+        <input type="number" step="0.01" name="other_expenses"
+               value="{{ event.other_expenses or '' if event else '' }}" placeholder="0.00"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Napomena -->
+<div class="card mb-3">
+  <div class="card-header"><span class="card-title">{{ tr('Napomena') }}</span></div>
+  <div class="card-body">
+    <textarea name="additional_details" rows="3">{{ event.additional_details or '' if event else '' }}</textarea>
+  </div>
+</div>
+
+<div style="display:flex;gap:10px;justify-content:flex-end;">
+  {% if back_to %}<a href="{{ back_to }}" class="btn btn-secondary">{{ tr('Otkaži') }}</a>
+  {% else %}<a href="{{ url_for('daily_log.index') }}" class="btn btn-secondary">{{ tr('Otkaži') }}</a>{% endif %}
+  <button type="submit" class="btn btn-primary">
+    {% if event %}{{ tr('Sačuvaj izmene') }}{% else %}{{ tr('Dodaj događaj') }}{% endif %}
+  </button>
+</div>
+</form>
+{% endblock %}

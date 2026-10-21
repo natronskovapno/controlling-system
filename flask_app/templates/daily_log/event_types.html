@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Tipovi događaja') }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Tipovi događaja') }}</h1>
+    <p class="page-subtitle">{{ tags|length }} {{ tr("tipova — dodaj ili ukloni") }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('daily_log.index') }}" class="btn btn-secondary">{{ tr('← Daily Log') }}</a>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Dodaj novi tip') }}</span></div>
+    <div class="card-body">
+      <form method="post">
+        <input type="hidden" name="action" value="add">
+        <div style="display:flex;gap:10px;align-items:flex-end;">
+          <div class="form-group" style="flex:1;margin:0;">
+            <label>{{ tr('Naziv tipa') }}</label>
+            <input type="text" name="name" placeholder="{{ tr('npr. stand up komedija') }}" required>
+          </div>
+          <button type="submit" class="btn btn-primary">{{ tr('Dodaj') }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Postojeći tipovi') }}</span></div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <tbody>
+          {% for tag in tags %}
+          <tr>
+            <td style="padding:8px 14px;">{{ tag.name }}</td>
+            <td style="padding:8px 14px;text-align:right;">
+              <form method="post" style="display:inline;"
+                    onsubmit="return confirm('Obriši tip \'{{ tag.name }}\'?')">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="tag_id" value="{{ tag.id }}">
+                <button type="submit" class="btn btn-ghost btn-sm"
+                        style="color:var(--red);font-size:.78rem;">{{ tr('Ukloni') }}</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="2" class="text-muted" style="padding:16px;">{{ tr('Nema tipova.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

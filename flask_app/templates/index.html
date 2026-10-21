@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Početna') }}{% endblock %}
+
+{% macro money(val) %}{%- if val is not none and val|float != 0 -%}{{ "{:,.0f}".format(val|float).replace(",",".") }}{%- else -%}—{%- endif -%}{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Pregled') }}</h1>
+    <p class="page-subtitle">{{ tr('Garden Stage — Controlling Dashboard') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('ingestion.index') }}" class="btn btn-secondary btn-sm">{{ tr('⬇ Ingestion') }}</a>
+  </div>
+</div>
+
+<!-- Date range selector -->
+<div style="display:flex;gap:6px;align-items:center;margin-bottom:20px;flex-wrap:wrap;">
+  {% for p, label in [
+    ('today',tr('Danas')),('week',tr('Ova nedelja')),('month',tr('Ovaj mesec')),
+    ('last_month',tr('Prošli mesec')),('ytd',tr('Ova godina')),('all',tr('Sve'))
+  ] %}
+  <a href="{{ url_for('index', preset=p) }}"
+     class="btn btn-sm {{ 'btn-primary' if preset == p else 'btn-secondary' }}"
+     style="font-size:.78rem;">{{ tr(label) }}</a>
+  {% endfor %}
+  <form method="get" style="display:flex;gap:4px;align-items:center;margin-left:6px;">
+    <input type="hidden" name="preset" value="custom">
+    <input type="date" name="date_from" value="{{ date_from }}"
+           style="font-size:.78rem;padding:4px 8px;">
+    <span style="font-size:.78rem;color:var(--ink-muted);">→</span>
+    <input type="date" name="date_to" value="{{ date_to }}"
+           style="font-size:.78rem;padding:4px 8px;">
+    <button type="submit" class="btn btn-sm btn-ghost" style="font-size:.78rem;">OK</button>
+  </form>
+  <span style="font-size:.75rem;color:var(--ink-muted);margin-left:4px;">
+    {{ date_from }} → {{ date_to }}
+  </span>
+</div>
+
+<!-- Sales KPIs -->
+<div class="kpi-grid" style="margin-bottom:20px;">
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Prodaja bruto') }}</div>
+    {% if kpis.total_sales_m is not none %}
+      <div class="kpi-card__value">{{ kpis.total_sales_m }}<span class="kpi-card__unit">M RSD</span></div>
+    {% else %}
+      <div class="kpi-card__value text-muted">—</div>
+    {% endif %}
+    <div class="kpi-card__sub">{{ tr('POS bruto (sa PDV-om), neopozivi računi') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Broj računa') }}</div>
+    <div class="kpi-card__value">{{ kpis.total_bills or '—' }}</div>
+    <div class="kpi-card__sub">{{ tr('Neopozivi POS računi') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--green">
+    <div class="kpi-card__label">{{ tr('Prosek po računu') }}</div>
+    <div class="kpi-card__value">{{ kpis.avg_bill or '—' }}<span class="kpi-card__unit" style="font-size:.65rem;"> RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('Prosečna bruto vrednost računa') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Poslednji ingestion') }}</div>
+    <div class="kpi-card__value" style="font-size:1.05rem;padding-top:6px;">{{ kpis.last_ingest }}</div>
+    <div class="kpi-card__sub">{{ tr('POS / SEF / banka') }}</div>
+  </div>
+</div>
+
+<!-- Cash position KPIs -->
+{% if cash_summary %}
+<div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+            color:var(--ink-muted);margin-bottom:10px;">{{ tr('Cash Position — trenutno stanje') }}</div>
+<div class="kpi-grid" style="margin-bottom:24px;">
+  <div class="kpi-card kpi-card--green">
+    <div class="kpi-card__label">{{ tr('Saldo računa') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ money(cash_summary.total_balance) }}<span class="kpi-card__unit"> RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('{n} račun(a)', n=balances|length) }}</div>
+  </div>
+  <div class="kpi-card kpi-card--red">
+    <div class="kpi-card__label">{{ tr('Neplaćene obaveze') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ money(cash_summary.total_payables) }}<span class="kpi-card__unit"> RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('{n} faktura dobavljačima', n=payables|length) }}</div>
+  </div>
+  <div class="kpi-card {{ 'kpi-card--green' if cash_summary.net_position >= 0 else 'kpi-card--red' }}">
+    <div class="kpi-card__label">{{ tr('Neto pozicija') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ money(cash_summary.net_position) }}<span class="kpi-card__unit"> RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('Saldo minus obaveze') }}</div>
+  </div>
+  {% if cash_summary.overdue_count %}
+  <div class="kpi-card kpi-card--red">
+    <div class="kpi-card__label">{{ tr('Dospele obaveze') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ money(cash_summary.overdue_amount) }}<span class="kpi-card__unit"> RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('{n} faktura prošlo rok', n=cash_summary.overdue_count) }}</div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- Top products + account balances -->
+<div class="section-grid">
+
+  <!-- Top selling products -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">{{ tr('Top 10 proizvoda') }}</span>
+      <span class="text-muted" style="font-size:.75rem;">{{ date_from }} → {{ date_to }}</span>
+    </div>
+    {% if top_products %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>{{ tr('Proizvod') }}</th>
+            <th class="text-right">{{ tr('Kom.') }}</th>
+            <th class="text-right">{{ tr('Bruto (RSD)') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in top_products %}
+          <tr>
+            <td style="color:var(--ink-muted);font-size:.78rem;">{{ loop.index }}</td>
+            <td style="font-size:.83rem;">{{ p.product_name }}</td>
+            <td class="text-right" style="font-size:.82rem;color:var(--ink-muted);">{{ "{:,.0f}".format(p.qty).replace(",",".") }}</td>
+            <td class="text-right" style="font-size:.83rem;font-weight:500;">{{ "{:,.0f}".format(p.gross).replace(",",".") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card-body"><p class="text-muted">{{ tr('Nema podataka za izabrani period.') }}</p></div>
+    {% endif %}
+    <div class="card-body" style="padding-top:0;">
+      <a href="{{ url_for('sales.index', date_from=date_from, date_to=date_to, group_by='product') }}"
+         class="btn btn-ghost btn-sm" style="font-size:.78rem;">{{ tr('Svi proizvodi →') }}</a>
+    </div>
+  </div>
+
+  <!-- Account balances -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">{{ tr('Stanja računa') }}</span>
+      <a href="{{ url_for('cash.index') }}" style="font-size:.75rem;color:var(--ink-muted);">{{ tr('Cash position →') }}</a>
+    </div>
+    {% if balances %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>{{ tr('Račun') }}</th><th class="text-right">{{ tr('Stanje (RSD)') }}</th><th class="text-right">{{ tr('Datum') }}</th></tr></thead>
+        <tbody>
+          {% for b in balances %}
+          <tr>
+            <td style="font-size:.8rem;">{{ b.label }}</td>
+            <td class="text-right" style="font-weight:600;">{{ money(b.balance) }}</td>
+            <td class="text-right" style="font-size:.75rem;color:var(--ink-muted);">{{ b.last_date or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card-body"><p class="text-muted">{{ tr('Nema podataka o stanjima računa.') }}</p></div>
+    {% endif %}
+    {% if payables %}
+    <div class="card-header" style="border-top:1px solid var(--border-soft);margin-top:0;">
+      <span class="card-title" style="font-size:.82rem;">{{ tr('Najveće neplaćene obaveze') }}</span>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>{{ tr('Dobavljač') }}</th><th class="text-right">{{ tr('Ostatak (RSD)') }}</th></tr></thead>
+        <tbody>
+          {% for p in payables[:5] %}
+          <tr>
+            <td style="font-size:.8rem;">{{ p.supplier_name or '—' }}</td>
+            <td class="text-right" style="font-size:.82rem;
+                color:{{ 'var(--red)' if p.days_overdue and p.days_overdue > 0 else 'inherit' }};
+                font-weight:{% if p.days_overdue and p.days_overdue > 0 %}600{% else %}400{% endif %};">{{ money(p.outstanding) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<div class="mt-3">
+  <p class="text-muted" style="font-size:.8rem;">
+    {{ tr('Baza:') }} <code>demo.db</code>
+  </p>
+</div>
+{% endblock %}

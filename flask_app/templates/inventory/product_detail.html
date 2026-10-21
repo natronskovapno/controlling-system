@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Istorija') }} — {{ meta.product_name if meta else '' }}{% endblock %}
+
+{% macro qty(val) %}
+  {%- if val is not none -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+{% macro money(val) %}
+  {%- if val is not none -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ meta.product_name if meta else tr('Proizvod') }}</h1>
+    <p class="page-subtitle">{{ meta.category_name }} · {{ meta.group_name }} · {{ meta.unit_measure }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('inventory.index') }}" class="btn btn-secondary btn-sm">{{ tr('← Nazad') }}</a>
+  </div>
+</div>
+
+<div class="card">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>{{ tr('Datum') }}</th><th>{{ tr('Kolicina na stanju (Report/Stock)') }}</th>
+        <th>{{ tr('Potroseno') }} (cogs_daily)</th><th>{{ tr('COGS neto') }}</th><th>{{ tr("Shift") }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in combined %}
+      <tr>
+        <td>{{ r.date }}</td>
+        <td><strong>{{ qty(r.closing_quantity) }}</strong></td>
+        <td>{{ qty(r.consumed) }}</td>
+        <td>{{ money(r.cogs_net) }}</td>
+        <td style="font-size:.72rem;color:var(--ink-muted);">{{ r.shift_id }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" style="text-align:center;color:var(--ink-muted);">{{ tr('Nema istorije za ovaj proizvod.') }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

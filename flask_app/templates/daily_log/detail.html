@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% block title %}{{ event.event_name or event.organiser or tr('Događaj #')~event.event_id }}{% endblock %}
+
+{% macro money(val) %}{%- if val is not none and val!=0 -%}{{ "{:,.0f}".format(val).replace(",",".") }} RSD{%- else -%}—{%- endif -%}{% endmacro %}
+
+{% macro src_badge(is_override) %}
+  {% if is_override %}
+    <span style="font-size:.68rem;background:var(--amber-light,#fef3cd);color:#856404;
+                 padding:1px 6px;border-radius:3px;margin-left:6px;">{{ tr('override') }}</span>
+  {% else %}
+    <span style="font-size:.68rem;background:var(--accent-bg);color:var(--ink-muted);
+                 padding:1px 6px;border-radius:3px;margin-left:6px;">auto</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro kpi(label, val, color='var(--ink)', note='') %}
+<div style="background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--r-md);padding:16px 20px;min-width:155px;">
+  <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-muted);margin-bottom:5px;">{{ label }}</div>
+  <div style="font-size:1.28rem;font-weight:700;color:{{ color }};">
+    {% if val is not none %}{{ "{:,.0f}".format(val).replace(",",".") }}<span style="font-size:.65rem;font-weight:400;"> RSD</span>
+    {% else %}<span style="color:var(--ink-muted);font-size:.85rem;">—</span>{% endif %}
+  </div>
+  {% if note %}<div style="font-size:.7rem;color:var(--ink-muted);margin-top:3px;">{{ note }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ event.event_name or event.organiser or tr('Događaj #')~event.event_id }}</h1>
+    <p class="page-subtitle">
+      {{ event.date }} &nbsp;·&nbsp;
+      <span class="badge {{ venue_badge }}">{{ venue_label }}</span>
+      &nbsp;·&nbsp;
+      <span class="badge {% if event.status=='Confirmed' %}badge-green{% else %}badge-amber{% endif %}">{{ event.status }}</span>
+    </p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('daily_log.index') }}" class="btn btn-secondary btn-sm">{{ tr('← Nazad') }}</a>
+    <a href="{{ url_for('daily_log.group_edit', date_str=event.date, venue_str=event.venue|lower) }}"
+       class="btn btn-secondary btn-sm">{{ tr('Izmeni') }}</a>
+    <form method="post" action="{{ url_for('daily_log.recalc', event_id=event.event_id) }}" style="display:inline;">
+      <input type="hidden" name="back_to" value="{{ url_for('daily_log.detail', event_id=event.event_id) }}">
+      <button class="btn btn-ghost btn-sm">{{ tr('↻ Preračunaj') }}</button>
+    </form>
+    <form method="post" action="{{ url_for('daily_log.toggle_status', event_id=event.event_id) }}" style="display:inline;">
+      <button class="btn btn-primary btn-sm">
+        {% if event.status=='Confirmed' %}{{ tr('Vrati na Preliminary') }}{% else %}{{ tr('Potvrdi') }}{% endif %}
+      </button>
+    </form>
+  </div>
+</div>
+
+{% if cutoff_warning %}
+<div class="flash flash--warning" style="margin-bottom:16px;">
+  {{ tr('⚑ Više događaja na ovom datumu/lokaciji — postavite') }} <strong>{{ tr("Kraj") }}</strong> {{ tr('(cutoff vreme) da biste omogućili automatsku raspodelu prodaje i COGS-a.') }}
+</div>
+{% endif %}
+
+{# KPI strip #}
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
+  {{ kpi(tr('Neto prihodi'), totals.total_revenues) }}
+  {{ kpi(tr('Rashodi'), totals.total_expenses) }}
+  {{ kpi("Gross profit", totals.gross_profit,
+     color=('var(--green)' if totals.gross_profit and totals.gross_profit>=0 else 'var(--red)'),
+     note=tr('Prihodi − varijabilni troškovi')) }}
+  {{ kpi("Net profit", totals.net_profit,
+     color=('var(--green)' if totals.net_profit and totals.net_profit>=0 else 'var(--red)'),
+     note=tr("Gross − fiksna alokacija") if totals.net_profit is not none else tr('Fiksni troškovi nisu uneti')) }}
+  {% if pos and pos.gross %}
+  <a href="{{ url_for('daily_log.sales_breakdown', event_id=event.event_id) }}"
+     style="text-decoration:none;">
+    <div style="background:var(--surface);border:1px solid var(--accent);border-radius:var(--r-md);
+                padding:16px 20px;min-width:155px;cursor:pointer;transition:background .15s;"
+         onmouseover="this.style.background='var(--accent-bg)'"
+         onmouseout="this.style.background='var(--surface)'">
+      <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);margin-bottom:5px;">
+        {{ tr('POS gross (stavke) ↗') }}
+      </div>
+      <div style="font-size:1.28rem;font-weight:700;color:var(--ink);">
+        {{ "{:,.0f}".format(pos.gross).replace(",",".") }}<span style="font-size:.65rem;font-weight:400;"> RSD</span>
+      </div>
+      <div style="font-size:.7rem;color:var(--ink-muted);margin-top:3px;">
+        {{ pos.products }} {{ tr("proizvoda — klikni za detalje") }}
+      </div>
+    </div>
+  </a>
+  {% endif %}
+</div>
+
+<div class="section-grid">
+<div style="display:flex;flex-direction:column;gap:16px;">
+
+  <!-- PRIHODI -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Prihodi (net, bez PDV-a)') }}</span></div>
+    <table class="data-table">
+      <tbody>
+        {% set sv, sov = fields.sales_net %}
+        <tr><td style="color:var(--ink-muted);font-size:.82rem;width:220px;padding:8px 14px;">
+              {{ tr("Bar prihodi (net)") }} {{ src_badge(sov) }}</td>
+            <td style="padding:8px 14px;text-align:right;font-weight:500;">{{ money(sv) }}</td></tr>
+
+        {% set bv, bov = fields.business_bills %}
+        <tr><td style="color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">
+              {{ tr('Poslovni računi (net, ÷1.2)') }} {{ src_badge(bov) }}
+              {% if biz_bills %}<span class="text-muted" style="font-size:.72rem;">({{ biz_bills|length }} {{ tr('računa)') }}</span>{% endif %}
+            </td>
+            <td style="padding:8px 14px;text-align:right;font-weight:500;">{{ money(bv) }}</td></tr>
+
+        {% set tv, tov = fields.third_party %}
+        <tr style="background:var(--accent-bg);">
+            <td style="color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">
+              {{ tr("Karte 3. strana (oduzima se)") }} {{ src_badge(tov) }}</td>
+            <td style="padding:8px 14px;text-align:right;font-weight:500;color:var(--red);">
+              {% if tv is not none and tv!=0 %}({{ money(tv) }}){% else %}—{% endif %}</td></tr>
+
+        <tr><td style="color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">
+              {{ tr("Najam lokala") }}
+              {% if event.venue_rent_invoice_id and inv_links.venue_rent_invoice_id %}
+                <span class="text-muted" style="font-size:.72rem;">← {{ tr('faktura') }} #{{ event.venue_rent_invoice_id }}</span>
+              {% endif %}
+            </td>
+            <td style="padding:8px 14px;text-align:right;font-weight:500;">{{ money(event.venue_rent_override or event.venue_rent) }}</td></tr>
+
+        <tr><td style="color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">{{ tr("Sopstvene karte") }}</td>
+            <td style="padding:8px 14px;text-align:right;font-weight:500;">{{ money(event.ticket_sales_own_override or event.ticket_sales_own) }}</td></tr>
+
+        <tr><td style="color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">{{ tr('Ostali prihodi') }}</td>
+            <td style="padding:8px 14px;text-align:right;font-weight:500;">{{ money(event.other_revenues) }}</td></tr>
+
+        <tr style="border-top:2px solid var(--border-soft);">
+            <td style="font-weight:700;font-size:.85rem;padding:8px 14px;">{{ tr('UKUPNO PRIHODI') }}</td>
+            <td style="font-weight:700;text-align:right;padding:8px 14px;">{{ money(totals.total_revenues) }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- RASHODI -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Rashodi (net, bez PDV-a)') }}</span></div>
+    <table class="data-table">
+      <tbody>
+        {% set cv, cov = fields.cogs %}
+        <tr><td style="color:var(--ink-muted);font-size:.82rem;width:220px;padding:8px 14px;">COGS {{ src_badge(cov) }}</td>
+            <td style="padding:8px 14px;text-align:right;font-weight:500;">{{ money(cv) }}</td></tr>
+
+        {% set wv, wov = fields.wages %}
+        <tr><td style="color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">{{ tr("Zarade (konobari)") }} {{ src_badge(wov) }}</td>
+            <td style="padding:8px 14px;text-align:right;font-weight:500;">{{ money(wv) }}</td></tr>
+
+        {% set lv, lov = fields.laborers %}
+        <tr><td style="color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">{{ tr("Radnici (fizikalci)") }} {{ src_badge(lov) }}</td>
+            <td style="padding:8px 14px;text-align:right;font-weight:500;">{{ money(lv) }}</td></tr>
+
+        {% for label, val, inv_key in [
+          (tr('Muzičari / izvođači'), event.musicians_fee, 'musicians_fee_invoice_id'),
+          (tr('Oprema / tehnika'), event.equipment_expenses, 'equipment_invoice_id'),
+          ('Marketing',           event.advertising, 'advertising_invoice_id'),
+        ] %}
+        <tr><td style="color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">
+              {{ label }}
+              {% if event[inv_key] and inv_links[inv_key] is defined %}
+                <span class="text-muted" style="font-size:.72rem;">← {{ tr('faktura') }} #{{ event[inv_key] }}</span>
+              {% endif %}
+            </td>
+            <td style="padding:8px 14px;text-align:right;font-weight:500;">{{ money(val) }}</td></tr>
+        {% endfor %}
+
+        <tr><td style="color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">{{ tr("Kartica — varijabilno") }}</td>
+            <td style="padding:8px 14px;text-align:right;font-weight:500;">{{ money(event.debit_card_expenses_variable) }}</td></tr>
+        <tr><td style="color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">{{ tr('Ostali rashodi') }}</td>
+            <td style="padding:8px 14px;text-align:right;font-weight:500;">{{ money(event.other_expenses) }}</td></tr>
+
+        <tr style="border-top:2px solid var(--border-soft);">
+            <td style="font-weight:700;font-size:.85rem;padding:8px 14px;">{{ tr('UKUPNO RASHODI') }}</td>
+            <td style="font-weight:700;text-align:right;padding:8px 14px;">{{ money(totals.total_expenses) }}</td></tr>
+        {% if event.fixed_profit is not none and event.fixed_profit != 0 %}
+        <tr style="background:var(--accent-bg);">
+            <td style="color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">{{ tr('Fiksni troškovi (alokacija)') }}</td>
+            <td style="padding:8px 14px;text-align:right;font-weight:500;
+                color:{% if event.fixed_profit < 0 %}var(--red){% else %}var(--green){% endif %};">{{ money(event.fixed_profit) }}</td></tr>
+        {% else %}
+        <tr style="background:var(--accent-bg);">
+            <td style="color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">{{ tr('Fiksni troškovi (alokacija)') }}</td>
+            <td style="padding:8px 14px;text-align:right;color:var(--ink-muted);font-size:.8rem;">{{ tr("nije uneto — net profit nije dostupan") }}</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if biz_bills %}
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Poslovni računi ovog dana') }}</span>
+      <span class="text-muted" style="font-size:.75rem;">{{ tr('bruto / neto (÷1.2)') }}</span>
+    </div>
+    <table class="data-table">
+      <thead><tr><th>{{ tr('Vreme') }}</th><th>{{ tr('Partner') }}</th><th class="text-right">{{ tr('Bruto (RSD)') }}</th><th class="text-right">{{ tr('Neto (RSD)') }}</th></tr></thead>
+      <tbody>
+        {% for b in biz_bills %}
+        <tr>
+          <td style="font-size:.8rem;color:var(--ink-muted);">{{ b.time_created[11:16] if b.time_created else '—' }}</td>
+          <td>{{ b.business_partner_name or '—' }}</td>
+          <td class="text-right">{{ "{:,.0f}".format(b.amount).replace(",",".") }} RSD</td>
+          <td class="text-right" style="color:var(--green);">{{ "{:,.0f}".format(b.amount / 1.2).replace(",",".") }} RSD</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if event.additional_details %}
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Napomena') }}</span></div>
+    <div class="card-body"><p style="font-size:.88rem;white-space:pre-wrap;">{{ event.additional_details }}</p></div>
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- Right column -->
+<div style="display:flex;flex-direction:column;gap:16px;">
+
+  <!-- Adjustments -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">{{ tr("Adjustments") }}</span>
+      <span class="badge badge-gray">{{ adjustments|length }}</span>
+    </div>
+    {% if adjustments %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>{{ tr('Polje') }}</th><th>{{ tr('Stara') }}</th><th>{{ tr('Nova') }}</th><th>{{ tr('Razlog') }}</th><th>{{ tr('Datum') }}</th></tr></thead>
+        <tbody>
+          {% for a in adjustments %}
+          <tr>
+            <td><code style="font-size:.78rem;">{{ a.field_adjusted or '—' }}</code></td>
+            <td class="text-muted">{{ a.original_value or '—' }}</td>
+            <td>{{ a.corrected_value or '—' }}</td>
+            <td style="font-size:.8rem;">{{ a.reason or '—' }}</td>
+            <td class="text-muted" style="font-size:.76rem;">{{ a.adjustment_date[:10] if a.adjustment_date else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card-body"><p class="text-muted" style="font-size:.85rem;">{{ tr('Nema adjustmenta.') }}</p></div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Dodaj adjustment') }}</span></div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('daily_log.add_adjustment', event_id=event.event_id) }}">
+        <div class="form-row">
+          <div class="form-group"><label>{{ tr('Polje') }}</label>
+            <input type="text" name="field_name" placeholder="{{ tr('npr. cogs_override') }}" required></div>
+          <div class="form-group"><label>{{ tr('Stara vrednost') }}</label>
+            <input type="text" name="old_value"></div>
+          <div class="form-group"><label>{{ tr('Nova vrednost') }}</label>
+            <input type="text" name="new_value"></div>
+        </div>
+        <div class="form-row" style="margin-top:8px;">
+          <div class="form-group" style="flex:2;"><label>{{ tr('Razlog') }}</label>
+            <input type="text" name="reason" placeholder="{{ tr('Objašnjenje...') }}"></div>
+          <div class="form-group"><label>{{ tr('Izvor') }}</label>
+            <input type="text" name="source" placeholder="{{ tr('WhatsApp, email...') }}"></div>
+        </div>
+        <div style="text-align:right;margin-top:10px;">
+          <button type="submit" class="btn btn-primary btn-sm">{{ tr('Dodaj') }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr("Metapodaci") }}</span></div>
+    <table class="data-table">
+      <tbody>
+        <tr><td style="color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">{{ tr("Kreirano") }}</td>
+            <td style="padding:8px 14px;">{{ event.created_at[:16] if event.created_at else '—' }}</td></tr>
+        <tr><td style="color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">{{ tr("Izmenjeno") }}</td>
+            <td style="padding:8px 14px;">{{ event.last_modified_at[:16] if event.last_modified_at else '—' }}</td></tr>
+        <tr><td style="color:var(--ink-muted);font-size:.82rem;padding:8px 14px;">{{ tr("Source ref") }}</td>
+            <td style="padding:8px 14px;font-size:.74rem;color:var(--ink-muted);">{{ event.source_ref or '—' }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+</div>
+{% endblock %}

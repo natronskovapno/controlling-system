@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Pass-through proizvodi') }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Pass-through proizvodi') }}</h1>
+    <p class="page-subtitle">{{ tr('Prihodi od ovih stavki se oduzimaju od ukupne prodaje') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('daily_log.index') }}" class="btn btn-secondary">{{ tr('← Daily Log') }}</a>
+  </div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Dodaj proizvod') }}</span></div>
+    <div class="card-body">
+      <form method="post">
+        <input type="hidden" name="action" value="add">
+        <div class="form-group"><label>{{ tr('Naziv proizvoda (tačno kao u POSu)') }}</label>
+          <input type="text" name="name" placeholder="{{ tr('npr. Tikets karta - ulaznica') }}" required></div>
+        <div class="form-group"><label>{{ tr('Napomena') }}</label>
+          <input type="text" name="note" placeholder="{{ tr('opciono') }}"></div>
+        <div style="text-align:right;margin-top:10px;">
+          <button type="submit" class="btn btn-primary">{{ tr('Dodaj') }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Trenutni pass-through proizvodi') }}</span></div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <tbody>
+          {% for p in products %}
+          <tr>
+            <td style="padding:8px 14px;"><strong>{{ p.name }}</strong>
+              {% if p.note %}<div class="text-muted" style="font-size:.78rem;">{{ p.note }}</div>{% endif %}</td>
+            <td style="padding:8px 14px;text-align:right;">
+              <form method="post" style="display:inline;" onsubmit="return confirm('Ukloni \'{{ p.name }}\'?')">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="product_id" value="{{ p.id }}">
+                <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--red);font-size:.78rem;">{{ tr('Ukloni') }}</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td class="text-muted" style="padding:16px;">{{ tr('Nema pass-through proizvoda.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

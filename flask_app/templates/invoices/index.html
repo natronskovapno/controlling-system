@@ -1,0 +1,594 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Fakture') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != '' and val|float != 0 -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+{% if not job_running %}
+<div class="card" style="margin-bottom:16px;border-left:3px solid var(--accent);" id="ingest_sef">
+  <div style="padding:12px 16px;">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="flex:1;">
+        <div style="font-size:.82rem;font-weight:600;color:var(--ink);">{{ tr('Uvoz podataka — SEF eFaktura') }}</div>
+        <div style="font-size:.75rem;color:var(--ink-muted);margin-top:2px;">{{ tr('Uvozi nove fakture iz SEF sistema') }}</div>
+      </div>
+      <button id="btn_sef" class="btn btn-primary btn-sm"
+              onclick="startWidget_sef()" style="white-space:nowrap;">
+        {{ tr('▶ Pokreni uvoz') }}
+      </button>
+    </div>
+    <div id="log_sef" style="display:none;margin-top:10px;padding:8px 10px;
+         background:#1a1a2e;color:#e2e8f0;font-family:monospace;font-size:.72rem;
+         border-radius:var(--r-sm);max-height:120px;overflow-y:auto;white-space:pre-wrap;"></div>
+  </div>
+</div>
+<script>
+(function(){
+  var _pt=null;
+  function _log(msg,run,code){
+    var el=document.getElementById('log_sef');
+    el.style.display='block'; el.textContent=msg;
+    var btn=document.getElementById('btn_sef');
+    if(run){ btn.disabled=true; btn.textContent='⏳ Uvoz u toku...'; }
+    else{
+      btn.disabled=false;
+      btn.textContent=(code===0)?'✓ Gotovo — pokreni ponovo':'▶ Pokreni uvoz';
+      if(code===0) el.style.color='#68d391';
+      else if(code!==null) el.style.color='#fc8181';
+    }
+  }
+  function _poll(id){
+    fetch('/ingestion/status/'+id).then(r=>r.json()).then(d=>{
+      _log(d.output||'',d.running,d.running?null:d.returncode);
+      if(d.running) _pt=setTimeout(()=>_poll(id),1200);
+    }).catch(e=>_log('Greška: '+e,false,-1));
+  }
+  window.startWidget_sef=function(){
+    if(_pt){clearTimeout(_pt);_pt=null;}
+    var body=new FormData();
+    body.append('step','sef');
+    
+    _log('Pokretanje...',true,null);
+    fetch('/ingestion/run',{method:'POST',body})
+      .then(r=>r.json()).then(d=>{
+        if(d.error){_log('Greška: '+d.error,false,-1);return;}
+        _poll(d.job_id);
+      }).catch(e=>_log('Greška: '+e,false,-1));
+  };
+})();
+</script>
+{% endif %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Fakture') }}</h1>
+    <p class="page-subtitle">{{ count }} {{ tr('faktura pronađeno') }}</p>
+  </div>
+  <div class="page-header__actions">
+    {% if direction == 'out' %}
+    <a href="{{ url_for('invoices.upload_pdf') }}" class="btn btn-secondary btn-sm">{{ tr('↑ Uvoz PDF faktura') }}</a>
+    {% endif %}
+    <a href="{{ url_for('invoices.new', direction=direction) }}" class="btn btn-primary btn-sm">{{ tr('+ Bela faktura') }}</a>
+  </div>
+</div>
+
+<div style="display:flex;gap:8px;margin-bottom:20px;">
+  <a href="{{ url_for('invoices.index', direction='in', search=filters.search, payment_status=filters.payment_status, date_from=filters.date_from, date_to=filters.date_to) }}"
+     class="btn {% if direction == 'in' %}btn-primary{% else %}btn-secondary{% endif %}">
+    {{ tr('← Ulazne (dobavljači)') }}
+  </a>
+  <a href="{{ url_for('invoices.index', direction='out', search=filters.search, payment_status=filters.payment_status, date_from=filters.date_from, date_to=filters.date_to) }}"
+     class="btn {% if direction == 'out' %}btn-primary{% else %}btn-secondary{% endif %}">
+    {{ tr("Izlazne (klijenti) →") }}
+  </a>
+  <div style="flex:1;"></div>
+  <a href="{{ url_for('invoices.index', direction=direction, show_latest='1') }}"
+     class="btn {% if filters.show_latest %}btn-primary{% else %}btn-secondary{% endif %}"
+     style="white-space:nowrap;">
+    {{ tr('⚡ Najnoviji uvoz') }}
+  </a>
+  {% if filters.show_latest %}
+  <a href="{{ url_for('invoices.index', direction=direction) }}"
+     class="btn btn-secondary" style="white-space:nowrap;">
+    {{ tr('× Otkaži filter') }}
+  </a>
+  {% endif %}
+</div>
+
+<!-- KPIs -->
+<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px;">
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Ukupno bruto') }}</div>
+    <div class="kpi-card__value" style="font-size:1.4rem;">{{ money(kpi.total_gross) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('Neto + PDV') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Neto') }}</div>
+    <div class="kpi-card__value" style="font-size:1.4rem;">{{ money(kpi.total_net) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('Bez PDV-a') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--red">
+    <div class="kpi-card__label">{{ tr('Ukupno neplaćeno') }}</div>
+    <div class="kpi-card__value" style="font-size:1.4rem;">{{ money(kpi.total_outstanding) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr("Unpaid + ostatak parcijalnih") }}</div>
+  </div>
+</div>
+
+{# SEF status strip — clickable filter pills #}
+{% set status_map = [
+  ('New',      tr('Primljeno'),   'badge-blue'),
+  ('Seen',     tr('Pregledano'),  'badge-amber'),
+  ('Approved', tr('Prihvaćeno'),  'badge-green'),
+  ('Rejected', tr('Odbijeno'),    'badge-red'),
+  ('Storno',   tr('Stornirano'),  'badge-gray'),
+  ('Sent',     tr('Poslato'),     'badge-blue'),
+  ('ReNotified',tr('Pon. obav.'), 'badge-gray'),
+] %}
+{% if status_counts %}
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
+  <span style="font-size:.75rem;color:var(--ink-muted);font-weight:600;">{{ tr('SEF status:') }}</span>
+  {% for api_val, label, badge in status_map %}
+    {% if status_counts.get(api_val) %}
+    <a href="{{ url_for('invoices.index', direction=direction,
+                search=filters.search, payment_status=filters.payment_status,
+                date_from=filters.date_from, date_to=filters.date_to,
+                assigned_filter=filters.assigned_filter,
+                invoice_status='' if filters.invoice_status == api_val else api_val) }}"
+       style="text-decoration:none;">
+      <span class="badge {{ badge }}"
+            style="cursor:pointer;{% if filters.invoice_status == api_val %}outline:2px solid var(--ink);{% endif %}">
+        {{ label }} ({{ status_counts[api_val] }})
+      </span>
+    </a>
+    {% endif %}
+  {% endfor %}
+  {% if filters.invoice_status %}
+  <a href="{{ url_for('invoices.index', direction=direction) }}"
+     style="font-size:.75rem;color:var(--ink-muted);text-decoration:none;">{{ tr('× reset filtera') }}</a>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- Filters -->
+<form method="get">
+  <input type="hidden" name="direction" value="{{ direction }}">
+  <div class="filter-bar">
+    <div class="form-group">
+      <label>{% if direction == 'in' %}{{ tr('Dobavljač') }}{% else %}{{ tr('Klijent') }}{% endif %}</label>
+      <input type="text" name="search" value="{{ filters.search }}" placeholder="{{ tr('Pretraži naziv...') }}">
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Status plaćanja') }}</label>
+      <select name="payment_status">
+        <option value="">{{ tr('Svi') }}</option>
+        <option value="Unpaid"  {{ 'selected' if filters.payment_status == 'Unpaid' }}>{{ tr('Neplaćeno') }}</option>
+        <option value="Partial" {{ 'selected' if filters.payment_status == 'Partial' }}>{{ tr('Parcijalno') }}</option>
+        <option value="Paid"    {{ 'selected' if filters.payment_status == 'Paid' }}>{{ tr('Plaćeno') }}</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Od datuma') }}</label>
+      <input type="date" name="date_from" value="{{ filters.date_from }}">
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Do datuma') }}</label>
+      <input type="date" name="date_to" value="{{ filters.date_to }}">
+    </div>
+    <div class="form-group">
+      <label>{{ tr("Alokacija (fiksni)") }}</label>
+      <select name="assigned_filter">
+        <option value="">{{ tr('Sve') }}</option>
+        <option value="unassigned" {{ 'selected' if filters.assigned_filter == 'unassigned' }}>{{ tr("Nedodeljeno") }}</option>
+        <option value="assigned"   {{ 'selected' if filters.assigned_filter == 'assigned' }}>{{ tr("Dodeljeno") }}</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Izvor') }}</label>
+      <select name="source_filter">
+        <option value="">{{ tr('Sve fakture') }}</option>
+        <option value="manual"  {{ 'selected' if filters.source_filter == 'manual' }}>{{ tr('Samo bele fakture') }}</option>
+        <option value="sef"     {{ 'selected' if filters.source_filter == 'sef' }}>{{ tr("Samo SEF / uvezene") }}</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <div style="display:flex;gap:6px;">
+        <button type="submit" class="btn btn-primary btn-sm">{{ tr('Filtriraj') }}</button>
+        <a href="{{ url_for('invoices.index', direction=direction) }}" class="btn btn-ghost btn-sm">{{ tr('Reset') }}</a>
+      </div>
+    </div>
+  </div>
+</form>
+
+<!-- Bulk actions bar -->
+<div style="background:var(--surface);border:1px solid var(--border-soft);
+            border-radius:var(--r-md);padding:10px 14px;margin-bottom:10px;">
+
+  {# Hidden filter state — passed to bulk endpoints when select_all=1 #}
+  <input type="hidden" id="f_direction"        value="{{ direction }}">
+  <input type="hidden" id="f_search"           value="{{ filters.search }}">
+  <input type="hidden" id="f_payment_status"   value="{{ filters.payment_status }}">
+  <input type="hidden" id="f_date_from"        value="{{ filters.date_from }}">
+  <input type="hidden" id="f_date_to"          value="{{ filters.date_to }}">
+  <input type="hidden" id="f_assigned_filter"  value="{{ filters.assigned_filter }}">
+  <input type="hidden" id="f_invoice_status"   value="{{ filters.invoice_status }}">
+
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <span style="font-size:.82rem;color:var(--ink-muted);">{{ tr('Označeno:') }} <strong id="inv-checked-count">0</strong></span>
+
+    {# Bulk mark paid #}
+    <form method="post" action="{{ url_for('invoices.bulk_set_paid') }}" id="bulk-paid-form" style="display:flex;gap:4px;align-items:center;">
+      <input type="hidden" name="direction" value="{{ direction }}">
+      <input type="hidden" name="select_all" id="paid-select-all" value="0">
+      <input type="hidden" name="f_search"           id="paid-f-search"           value="">
+      <input type="hidden" name="f_payment_status"   id="paid-f-payment_status"   value="">
+      <input type="hidden" name="f_date_from"        id="paid-f-date_from"        value="">
+      <input type="hidden" name="f_date_to"          id="paid-f-date_to"          value="">
+      <input type="hidden" name="f_assigned_filter" id="paid-f-assigned_filter" value="">
+      <select name="new_status" style="font-size:.78rem;padding:4px 8px;border-radius:var(--r-sm);border:1px solid var(--border);">
+        <option value="Paid">{{ tr('Plaćeno') }}</option>
+        <option value="Unpaid">{{ tr('Neplaćeno') }}</option>
+        <option value="Partial">{{ tr('Parcijalno') }}</option>
+      </select>
+      <button type="submit" class="btn btn-secondary btn-sm"
+              onclick="return prepareBulk('bulk-paid-form','paid')">{{ tr("✓ Primeni") }}</button>
+    </form>
+
+    {# Bulk assign fixed cost — period auto-derived from date_received/date_issued #}
+    {% if fixed_tags %}
+    <form method="post" action="{{ url_for('invoices.bulk_assign_fixed_cost') }}" id="bulk-fc-form" style="display:flex;gap:4px;align-items:center;">
+      <input type="hidden" name="direction" value="{{ direction }}">
+      <input type="hidden" name="select_all" id="fc-select-all" value="0">
+      <input type="hidden" name="f_search"           id="fc-f-search"           value="">
+      <input type="hidden" name="f_payment_status"   id="fc-f-payment_status"   value="">
+      <input type="hidden" name="f_date_from"        id="fc-f-date_from"        value="">
+      <input type="hidden" name="f_date_to"          id="fc-f-date_to"          value="">
+      <input type="hidden" name="f_assigned_filter" id="fc-f-assigned_filter" value="">
+      <select name="tag_id" style="font-size:.78rem;padding:4px 8px;border-radius:var(--r-sm);border:1px solid var(--border);">
+        <option value="">{{ tr('— kategorija —') }}</option>
+        <optgroup label="Troškovi">
+          {% for t in fixed_tags if t.type == 'expense' %}
+            <option value="{{ t.tag_id }}">{{ t.name }}</option>
+          {% endfor %}
+        </optgroup>
+        <optgroup label="Prihodi">
+          {% for t in fixed_tags if t.type == 'income' %}
+            <option value="{{ t.tag_id }}">{{ t.name }}</option>
+          {% endfor %}
+        </optgroup>
+      </select>
+      <button type="submit" class="btn btn-secondary btn-sm"
+              onclick="return prepareBulk('bulk-fc-form','fc')">{{ tr("→ Dodeli / Ukloni tag") }}</button>
+    </form>
+    {% endif %}
+
+    {# Bulk assign to Small Brewery #}
+    <form method="post" action="{{ url_for('invoices.bulk_assign_brewery') }}" id="bulk-mp-form" style="display:flex;gap:4px;align-items:center;">
+      <input type="hidden" name="direction" value="{{ direction }}">
+      <input type="hidden" name="select_all" id="mp-select-all" value="0">
+      <input type="hidden" name="f_search"           id="mp-f-search"           value="">
+      <input type="hidden" name="f_payment_status"   id="mp-f-payment_status"   value="">
+      <input type="hidden" name="f_date_from"        id="mp-f-date_from"        value="">
+      <input type="hidden" name="f_date_to"          id="mp-f-date_to"          value="">
+      <input type="hidden" name="f_assigned_filter" id="mp-f-assigned_filter" value="">
+      <input type="hidden" name="f_invoice_status"  id="mp-f-invoice_status"  value="">
+      <button type="submit" class="btn btn-sm"
+              style="background:var(--blue-bg);color:var(--blue);border:1px solid #90caf9;"
+              onclick="return prepareBulk('bulk-mp-form','mp')">{{ tr("→ Dodeli the Brewery") }}</button>
+    </form>
+
+    <button type="button" class="btn btn-ghost btn-sm" onclick="invToggleAll()">{{ tr('Oznaci stranicu') }}</button>
+  </div>
+
+  {# Select-all-results banner — shown after page-select, offers to extend to full filter #}
+  <div id="select-all-banner" style="display:none;margin-top:8px;padding:8px 12px;
+       background:#fff8e1;border-radius:var(--r-sm);font-size:.82rem;color:var(--ink);
+       border:1px solid #ffe082;">
+    {{ tr('Označena je samo ova stranica (') }}<span id="page-count">0</span> {{ tr('faktura).') }}
+    <button type="button" class="btn btn-primary btn-sm" style="margin-left:8px;"
+            onclick="selectAllResults()">
+      {{ tr('Oznaci svih') }} <strong>{{ count }}</strong> {{ tr('rezultata filtera') }}
+    </button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="cancelSelectAll()">×</button>
+  </div>
+  <div id="all-selected-banner" style="display:none;margin-top:8px;padding:8px 12px;
+       background:#e8f5e9;border-radius:var(--r-sm);font-size:.82rem;color:var(--ink);
+       border:1px solid #a5d6a7;">
+    {{ tr('Svih') }} <strong>{{ count }}</strong> {{ tr('faktura iz filtera je označeno. Akcije će se primeniti na sve.') }}
+    <button type="button" class="btn btn-ghost btn-sm" onclick="cancelSelectAll()">{{ tr('× Poništi') }}</button>
+  </div>
+</div>
+
+<!-- Table -->
+<div id="inv-table-form">
+<div class="card">
+  <div class="table-wrap" style="overflow-x:auto;">
+    <table class="data-table" style="min-width:1100px;width:100%;table-layout:fixed;">
+      <thead>
+        <tr>
+          <th style="width:32px;"><input type="checkbox" id="inv-check-all" onchange="invToggleAll()"></th>
+          <th style="width:105px;">{{ tr('Izdavanje') }}</th>
+          {% if direction == 'in' %}<th style="width:105px;">{{ tr("Prijem") }}</th>{% endif %}
+          <th style="width:105px;">{{ tr("Rok") }}</th>
+          <th style="width:180px;">{% if direction == 'in' %}{{ tr('Dobavljač') }}{% else %}{{ tr('Klijent') }}{% endif %}</th>
+          <th style="width:110px;">{{ tr('Broj') }}</th>
+          <th style="width:78px;text-align:right;">{{ tr('Neto') }}</th>
+          <th style="width:78px;text-align:right;">{{ tr('Bruto') }}</th>
+          <th style="width:105px;">{{ tr('Datum plaćanja') }}</th>
+          <th style="width:78px;text-align:right;">{{ tr('Preostalo') }}</th>
+          <th style="width:90px;">{{ tr('Plaćanje') }}</th>
+          <th style="width:95px;">{{ tr('SEF status') }}</th>
+          {# Widened for English: "Equipment maintenance" did not fit in 80px. #}
+          <th style="width:122px;">{{ tr('Alokacija') }}</th>
+          <th style="width:118px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        {% set gross = (r.net_amount or 0) + (r.pdv_amount or 0) %}
+        {% set is_brewery = (r.entity == 'brewery') %}
+        <tr id="row-{{ r.invoice_id }}"{% if is_brewery %} style="background:#e3f2fd;"{% endif %}>
+          <td><input type="checkbox" class="inv-cb" value="{{ r.invoice_id }}" onchange="invUpdateCount(this)"></td>
+          <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.date_issued or '—' }}</td>
+          {% if direction == 'in' %}
+          <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-muted);font-size:.82rem;">{{ r.date_received or '—' }}</td>
+          {% endif %}
+          <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            {% if r.due_date %}
+              <span style="{% if r.payment_status == 'Unpaid' and r.due_date < now_date %}color:var(--red);font-weight:500;{% endif %}">
+                {{ r.due_date }}
+              </span>
+            {% else %}—{% endif %}
+          </td>
+          <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ r.counterparty }}">
+            {{ r.counterparty }}
+            {% if latest_ingestion_timestamp and ((r.created_at and r.created_at[:10] == latest_ingestion_timestamp) or (r.ingested_at and r.ingested_at[:10] == latest_ingestion_timestamp)) %}
+              <span class="badge badge-green" style="font-size:.65rem;margin-left:4px;">{{ tr('NOVO') }}</span>
+            {% endif %}
+            {% if is_brewery %}
+              <span class="badge badge-blue" style="font-size:.6rem;margin-left:4px;">BR</span>
+            {% endif %}
+          </td>
+          <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78rem;color:var(--ink-muted);" title="{{ r.invoice_number_sef or r.invoice_number_ext or '' }}">
+            {{ r.invoice_number_sef or r.invoice_number_ext or '—' }}
+          </td>
+          <td class="num">{{ money(r.net_amount) }}</td>
+          <td class="num" style="font-weight:500;">{{ money(gross) }}</td>
+          <td style="white-space:nowrap;min-width:110px;">
+            {# Inline date picker for payment_date — auto-submits on change #}
+            <form method="post"
+                  action="{{ url_for('invoices.set_payment_date', direction=direction, invoice_id=r.invoice_id) }}"
+                  style="display:inline;"
+                  onchange="this.submit()">
+              <input type="hidden" name="f_search"          value="{{ filters.search }}">
+              <input type="hidden" name="f_payment_status"  value="{{ filters.payment_status }}">
+              <input type="hidden" name="f_date_from"       value="{{ filters.date_from }}">
+              <input type="hidden" name="f_date_to"         value="{{ filters.date_to }}">
+              <input type="hidden" name="f_assigned_filter" value="{{ filters.assigned_filter }}">
+              <input type="hidden" name="f_invoice_status"  value="{{ filters.invoice_status }}">
+              <input type="hidden" name="f_page"            value="{{ page }}">
+              <input type="date"
+                     name="payment_date"
+                     value="{{ r.payment_date or '' }}"
+                     style="font-size:.75rem;padding:2px 4px;border:1px solid var(--border);
+                            border-radius:var(--r-sm);background:var(--surface);
+                            color:var(--ink);width:105px;"
+                     title="{{ tr('Datum plaćanja') }}">
+            </form>
+          </td>
+          <td class="num">
+            {# Remaining balance: — for Paid, full gross for Unpaid, remainder for Partial #}
+            {% if r.payment_status == 'Paid' %}
+              <span style="color:var(--ink-ghost);">—</span>
+            {% elif r.payment_status == 'Partial' %}
+              {% set remaining = gross - (r.amount_paid or 0) %}
+              <span class="text-warning">{{ money(remaining) }}</span>
+            {% else %}
+              <span class="text-negative">{{ money(gross) }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.payment_status == 'Paid' %}
+              <span class="badge badge-green">{{ tr('Plaćeno') }}</span>
+            {% elif r.payment_status == 'Partial' %}
+              <span class="badge badge-amber">{{ tr('Parcijalno') }}</span>
+            {% else %}
+              <span class="badge badge-red">{{ tr('Neplaćeno') }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% set ist = r.invoice_status or '' %}
+            {% if ist == 'Approved' %}
+              <span class="badge badge-green">{{ tr('Prihvaćeno') }}</span>
+            {% elif ist == 'New' %}
+              <span class="badge badge-blue">{{ tr('Primljeno') }}</span>
+            {% elif ist == 'Seen' %}
+              <span class="badge badge-amber">{{ tr('Pregledano') }}</span>
+            {% elif ist == 'Rejected' %}
+              <span class="badge badge-red">{{ tr('Odbijeno') }}</span>
+            {% elif ist == 'Storno' %}
+              <span class="badge badge-gray">{{ tr('Stornirano') }}</span>
+            {% elif ist == 'Sent' %}
+              <span class="badge badge-blue">{{ tr('Poslato') }}</span>
+            {% elif ist == 'ReNotified' %}
+              <span class="badge badge-gray">{{ tr("Pon. obav.") }}</span>
+            {% else %}
+              <span style="color:var(--ink-ghost);font-size:.78rem;">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% set tags = invoice_tags.get(r.invoice_id, []) %}
+            {% if tags %}
+              {% for t in tags %}
+                <span class="badge {{ 'badge-red' if t.type == 'expense' else 'badge-green' }}"
+                      style="font-size:.65rem;margin:1px 1px 1px 0;display:inline-block;">
+                  {{ t.name }}
+                </span>
+              {% endfor %}
+            {% else %}
+              <span style="color:var(--ink-ghost);font-size:.78rem;">—</span>
+            {% endif %}
+          </td>
+          <td style="white-space:nowrap;">
+            <a href="{{ url_for('invoices.detail', direction=direction, invoice_id=r.invoice_id) }}"
+               class="btn btn-ghost btn-sm">{{ tr('Detalji') }}</a>
+            <form method="post"
+                  action="{{ url_for('invoices.toggle_paid', direction=direction, invoice_id=r.invoice_id) }}"
+                  style="display:inline;">
+              <input type="hidden" name="f_search"          value="{{ filters.search }}">
+              <input type="hidden" name="f_payment_status"  value="{{ filters.payment_status }}">
+              <input type="hidden" name="f_date_from"       value="{{ filters.date_from }}">
+              <input type="hidden" name="f_date_to"         value="{{ filters.date_to }}">
+              <input type="hidden" name="f_assigned_filter" value="{{ filters.assigned_filter }}">
+              <input type="hidden" name="f_invoice_status"  value="{{ filters.invoice_status }}">
+              <input type="hidden" name="f_page"            value="{{ page }}">
+              <button class="btn btn-ghost btn-sm" title="{{ tr('Brzi toggle Paid/Unpaid') }}">
+                {% if r.payment_status == 'Paid' %}↩{% else %}✓{% endif %}
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="14">
+            <div class="empty-state"><p>{{ tr('Nema faktura za izabrane filtere.') }}</p></div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+
+{% block scripts %}
+<script>
+// ── state ─────────────────────────────────────────────────────────────
+let invAllChecked  = false;   // page-level checkbox state
+let selectingAll   = false;   // true when "all results" mode is active
+const excludedIds  = new Set(); // IDs explicitly unchecked while in select-all mode
+
+// ── individual checkbox changed ────────────────────────────────────
+function invUpdateCount(cb){
+  if (selectingAll) {
+    const id = cb.value;
+    if (cb.checked) {
+      excludedIds.delete(id);
+    } else {
+      excludedIds.add(id);
+    }
+    const effective = {{ count }} - excludedIds.size;
+    document.getElementById('inv-checked-count').textContent = effective;
+    const bannerEl = document.getElementById('all-selected-banner');
+    if (excludedIds.size > 0) {
+      bannerEl.innerHTML = `Svih <strong>${effective}</strong> faktura iz filtera je označeno — <em>${excludedIds.size} isključeno</em>. Akcije će se primeniti na sve osim isključenih. <button type="button" class="btn btn-ghost btn-sm" onclick="cancelSelectAll()">× Poništi</button>`;
+    } else {
+      bannerEl.innerHTML = `Svih <strong>{{ count }}</strong> faktura iz filtera je označeno. Akcije će se primeniti na sve. <button type="button" class="btn btn-ghost btn-sm" onclick="cancelSelectAll()">× Poništi</button>`;
+    }
+    return;
+  }
+  document.getElementById('inv-checked-count').textContent =
+    document.querySelectorAll('.inv-cb:checked').length;
+}
+
+// ── page-level "select all" toggle ───────────────────────────────
+function invToggleAll(){
+  if (selectingAll) { cancelSelectAll(); return; }
+  invAllChecked = !invAllChecked;
+  document.querySelectorAll('.inv-cb').forEach(cb => cb.checked = invAllChecked);
+  document.getElementById('inv-check-all').checked = invAllChecked;
+  document.getElementById('inv-checked-count').textContent =
+    document.querySelectorAll('.inv-cb:checked').length;
+
+  const total = {{ count }};
+  const pageCount = document.querySelectorAll('.inv-cb').length;
+  if (invAllChecked && total > pageCount) {
+    document.getElementById('page-count').textContent = pageCount;
+    document.getElementById('select-all-banner').style.display = 'block';
+    document.getElementById('all-selected-banner').style.display = 'none';
+  } else {
+    document.getElementById('select-all-banner').style.display = 'none';
+    document.getElementById('all-selected-banner').style.display = 'none';
+  }
+}
+
+function selectAllResults(){
+  selectingAll = true;
+  excludedIds.clear();
+  document.getElementById('select-all-banner').style.display = 'none';
+  document.getElementById('all-selected-banner').style.display = 'block';
+  document.getElementById('inv-checked-count').textContent = '{{ count }}';
+  document.querySelectorAll('.inv-cb').forEach(cb => cb.checked = true);
+}
+
+function cancelSelectAll(){
+  selectingAll = false;
+  excludedIds.clear();
+  document.getElementById('select-all-banner').style.display = 'none';
+  document.getElementById('all-selected-banner').style.display = 'none';
+  invAllChecked = false;
+  document.querySelectorAll('.inv-cb').forEach(cb => cb.checked = false);
+  document.getElementById('inv-check-all').checked = false;
+  document.getElementById('inv-checked-count').textContent = '0';
+}
+
+// ── prepare bulk form before submit ──────────────────────────────────
+function prepareBulk(formId, prefix){
+  const form = document.getElementById(formId);
+
+  if (selectingAll) {
+    form.querySelector('#' + prefix + '-select-all').value = '1';
+    ['search','payment_status','date_from','date_to','assigned_filter','invoice_status'].forEach(k => {
+      const src = document.getElementById('f_' + k);
+      const dst = document.getElementById(prefix + '-f-' + k);
+      if (src && dst) dst.value = src.value;
+    });
+    form.querySelectorAll('input[name="invoice_ids"]').forEach(el => el.remove());
+    form.querySelectorAll('input[name="exclude_ids"]').forEach(el => el.remove());
+    excludedIds.forEach(id => {
+      const inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'exclude_ids'; inp.value = id;
+      form.appendChild(inp);
+    });
+  } else {
+    form.querySelector('#' + prefix + '-select-all').value = '0';
+    form.querySelectorAll('input[name="invoice_ids"]').forEach(el => el.remove());
+    const checked = document.querySelectorAll('.inv-cb:checked');
+    if (!checked.length) { alert('Označite bar jednu fakturu.'); return false; }
+    checked.forEach(cb => {
+      const inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'invoice_ids'; inp.value = cb.value;
+      form.appendChild(inp);
+    });
+  }
+  return true;
+}
+  // Scroll to anchor row after inline edit
+  (function(){
+    var h = window.location.hash;
+    if(h){
+      var el = document.querySelector(h);
+      if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+    }
+  })();
+</script>
+{% endblock %}
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}<a href="{{ url_for('invoices.index', page=page-1, **filters) }}">‹</a>{% endif %}
+  {% for p in range(1, total_pages+1) %}
+    {% if p == page %}<span class="current">{{ p }}</span>
+    {% elif p <= 2 or p >= total_pages-1 or (p >= page-2 and p <= page+2) %}
+      <a href="{{ url_for('invoices.index', page=p, **filters) }}">{{ p }}</a>
+    {% elif p == 3 or p == total_pages-2 %}<span>…</span>{% endif %}
+  {% endfor %}
+  {% if page < total_pages %}<a href="{{ url_for('invoices.index', page=page+1, **filters) }}">›</a>{% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Provere') }}{% endblock %}
+
+{% block content %}
+<style>
+  .chk-kpis { display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+  .chk-kpi {
+    flex:1; min-width:140px; padding:14px 16px;
+    border:1px solid var(--border-soft); border-radius:var(--r-md);
+    background:var(--canvas-warm);
+  }
+  .chk-kpi__num { font-size:1.7rem; font-weight:600; line-height:1.1; }
+  .chk-kpi__lab { font-size:.72rem; color:var(--ink-muted); margin-top:3px;
+                  text-transform:uppercase; letter-spacing:.04em; }
+  .st-pass { color:#2e7d4f; }
+  .st-warn { color:#b7791f; }
+  .st-fail { color:#c0392b; }
+
+  .chk-row {
+    border:1px solid var(--border-soft); border-radius:var(--r-md);
+    margin-bottom:8px; background:var(--canvas);
+  }
+  .chk-row.fail { border-left:3px solid #c0392b; }
+  .chk-row.warn { border-left:3px solid #b7791f; }
+  .chk-row.pass { border-left:3px solid #2e7d4f; }
+  .chk-head {
+    display:flex; align-items:center; gap:12px; padding:11px 14px; cursor:pointer;
+  }
+  .chk-head:hover { background:var(--canvas-warm); }
+  .chk-badge {
+    font-size:.66rem; font-weight:700; letter-spacing:.05em;
+    padding:3px 8px; border-radius:3px; min-width:48px; text-align:center;
+  }
+  .chk-badge.pass { background:#e6f4ec; color:#2e7d4f; }
+  .chk-badge.warn { background:#fdf3e0; color:#b7791f; }
+  .chk-badge.fail { background:#fbeae7; color:#c0392b; }
+  .chk-title { font-weight:600; font-size:.86rem; }
+  .chk-group {
+    font-size:.68rem; color:var(--ink-muted); text-transform:uppercase;
+    letter-spacing:.04em; min-width:96px;
+  }
+  .chk-summary { color:var(--ink-muted); font-size:.8rem; flex:1; }
+  .chk-ms { font-size:.68rem; color:var(--ink-faint); }
+  .chk-body { display:none; padding:0 14px 14px 14px; }
+  .chk-body.open { display:block; }
+  .chk-why {
+    font-size:.75rem; color:var(--ink-muted); font-style:italic;
+    padding:8px 10px; background:var(--canvas-warm);
+    border-radius:var(--r-sm); margin-bottom:10px;
+  }
+  .chk-table { width:100%; border-collapse:collapse; font-size:.78rem; }
+  .chk-table th {
+    text-align:left; padding:5px 8px; border-bottom:1px solid var(--border);
+    font-weight:600; color:var(--ink-muted); font-size:.72rem;
+    text-transform:uppercase; letter-spacing:.03em;
+  }
+  .chk-table td { padding:5px 8px; border-bottom:1px solid var(--border-soft); }
+  .chk-table td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .chk-filter { display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
+  .chk-filter a {
+    font-size:.76rem; padding:5px 11px; border-radius:var(--r-sm);
+    border:1px solid var(--border-soft); text-decoration:none;
+    color:var(--ink-muted); background:var(--canvas);
+  }
+  .chk-filter a.active { background:var(--ink); color:var(--canvas); border-color:var(--ink); }
+</style>
+
+<div class="page-head">
+  <div>
+    <h1>{{ tr('Provere') }}</h1>
+    <p class="page-sub">
+      {{ tr('Invarijante koje moraju da važe. Svaka provera je dodata zato što se nešto konkretno desilo. Poslednje pokretanje:') }}
+      {{ now }}
+    </p>
+  </div>
+</div>
+
+<div class="chk-kpis">
+  <div class="chk-kpi">
+    <div class="chk-kpi__num">{{ total }}</div>
+    <div class="chk-kpi__lab">{{ tr('Ukupno provera') }}</div>
+  </div>
+  <div class="chk-kpi">
+    <div class="chk-kpi__num st-pass">{{ counts.PASS }}</div>
+    <div class="chk-kpi__lab">{{ tr("Prolaz") }}</div>
+  </div>
+  <div class="chk-kpi">
+    <div class="chk-kpi__num st-warn">{{ counts.WARN }}</div>
+    <div class="chk-kpi__lab">{{ tr('Upozorenje') }}</div>
+  </div>
+  <div class="chk-kpi">
+    <div class="chk-kpi__num st-fail">{{ counts.FAIL }}</div>
+    <div class="chk-kpi__lab">{{ tr('Pad') }}</div>
+  </div>
+</div>
+
+<div class="chk-filter">
+  <a href="{{ url_for('checks.index') }}" class="{% if not active_group %}active{% endif %}">{{ tr('Sve') }}</a>
+  {% for g in groups %}
+    <a href="{{ url_for('checks.index', group=g) }}"
+       class="{% if active_group == g %}active{% endif %}">{{ tr(g) }}</a>
+  {% endfor %}
+</div>
+
+{% for r in results %}
+  {% set cls = r.status|lower %}
+  <div class="chk-row {{ cls }}">
+    <div class="chk-head" onclick="this.nextElementSibling.classList.toggle('open')">
+      <span class="chk-badge {{ cls }}">{{ r.status }}</span>
+      <span class="chk-group">{{ tr(r.group) }}</span>
+      <span class="chk-title">{{ tr(r.title) }}</span>
+      <span class="chk-summary">{{ tr(r.summary) }}</span>
+      <span class="chk-ms">{{ r.ms }} ms</span>
+    </div>
+    <div class="chk-body">
+      <div class="chk-why">{{ tr(r.why) }}</div>
+      {% if r.rows %}
+        <table class="chk-table">
+          <thead>
+            <tr>{% for k in r.rows[0].keys() %}<th>{{ k }}</th>{% endfor %}</tr>
+          </thead>
+          <tbody>
+            {% for row in r.rows[:60] %}
+              <tr>
+                {% for v in row.values() %}
+                  {% if v is number %}
+                    <td class="num">{{ "{:,.0f}".format(v) }}</td>
+                  {% else %}
+                    <td>{{ v if v is not none else "—" }}</td>
+                  {% endif %}
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% if r.rows|length > 60 %}
+          <p style="font-size:.74rem;color:var(--ink-muted);margin-top:8px;">
+            {{ tr("Prikazano 60 od") }} {{ r.rows|length }} {{ tr("redova.") }}
+          </p>
+        {% endif %}
+      {% else %}
+        <p style="font-size:.78rem;color:var(--ink-muted);">{{ tr('Nema detalja za prikaz.') }}</p>
+      {% endif %}
+    </div>
+  </div>
+{% endfor %}
+{% endblock %}

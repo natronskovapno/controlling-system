@@ -1,0 +1,626 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Izvodi') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val|float != 0 -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% macro acct_label(acct) %}
+  {{ account_labels.get(acct, acct) }}
+{% endmacro %}
+
+{% block content %}
+{% if not job_running %}
+<div class="card" style="margin-bottom:16px;border-left:3px solid var(--accent);" id="ingest_bancademo_bank">
+  <div style="padding:12px 16px;">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="flex:1;">
+        <div style="font-size:.82rem;font-weight:600;color:var(--ink);">{{ tr('Uvoz podataka — Demo Bank') }}</div>
+        <div style="font-size:.75rem;color:var(--ink-muted);margin-top:2px;">{{ tr('Uvozi XML izvode (folder ili jedan fajl)') }}</div>
+      </div>
+      <button id="btn_bancademo_bank" class="btn btn-primary btn-sm"
+              onclick="startWidget_banca_demo_bank()" style="white-space:nowrap;">
+        {{ tr('▶ Pokreni uvoz') }}
+      </button>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:8px;">
+      <input type="text" id="path_bancademo_bank"
+             placeholder="C:\controlling-system\data\bank statements\Demo Bank"
+             style="font-size:.78rem;padding:4px 8px;flex:1;
+                    border:1px solid var(--border-soft);border-radius:var(--r-sm);
+                    background:var(--surface);">
+      <span style="font-size:.72rem;color:var(--ink-muted);">{{ tr('(paste putanju)') }}</span>
+    </div>
+    <div id="log_bancademo_bank" style="display:none;margin-top:10px;padding:8px 10px;
+         background:#1a1a2e;color:#e2e8f0;font-family:monospace;font-size:.72rem;
+         border-radius:var(--r-sm);max-height:120px;overflow-y:auto;white-space:pre-wrap;"></div>
+  </div>
+</div>
+<script>
+(function(){
+  var _pt=null;
+  function _log(msg,run,code){
+    var el=document.getElementById('log_bancademo_bank');
+    el.style.display='block'; el.textContent=msg;
+    var btn=document.getElementById('btn_bancademo_bank');
+    if(run){ btn.disabled=true; btn.textContent='⏳ Uvoz u toku...'; }
+    else{
+      btn.disabled=false;
+      btn.textContent=(code===0)?'✓ Gotovo — pokreni ponovo':'▶ Pokreni uvoz';
+      if(code===0) el.style.color='#68d391';
+      else if(code!==null) el.style.color='#fc8181';
+    }
+  }
+  function _poll(id){
+    fetch('/ingestion/status/'+id).then(r=>r.json()).then(d=>{
+      _log(d.output||'',d.running,d.running?null:d.returncode);
+      if(d.running) _pt=setTimeout(()=>_poll(id),1200);
+    }).catch(e=>_log('Greška: '+e,false,-1));
+  }
+  window.startWidget_banca_demo_bank=function(){
+    if(_pt){clearTimeout(_pt);_pt=null;}
+    var body=new FormData();
+    body.append('step','banca_demo_bank');
+    
+    var rawPath = document.getElementById('path_bancademo_bank').value.trim();
+    rawPath = rawPath.replace(/^["']+|["']+$/g, "").trim();
+    if (!rawPath) { alert('Unesite putanju do fajla ili foldera.'); return; }
+    body.append('file_path', rawPath);
+    _log('Pokretanje...',true,null);
+    fetch('/ingestion/run',{method:'POST',body})
+      .then(r=>r.json()).then(d=>{
+        if(d.error){_log('Greška: '+d.error,false,-1);return;}
+        _poll(d.job_id);
+      }).catch(e=>_log('Greška: '+e,false,-1));
+  };
+})();
+</script>
+{% endif %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Izvodi') }}</h1>
+    <p class="page-subtitle">{{ count }} {{ tr('transakcija pronađeno') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('bank.index', show_latest='1') }}"
+       class="btn {% if filters.show_latest %}btn-primary{% else %}btn-secondary{% endif %} btn-sm"
+       style="white-space:nowrap;">
+      {{ tr('⚡ Najnoviji uvoz') }}
+    </a>
+    {% if filters.show_latest %}
+    <a href="{{ url_for('bank.index') }}"
+       class="btn btn-secondary btn-sm" style="white-space:nowrap;">
+      {{ tr('× Otkaži filter') }}
+    </a>
+    {% endif %}
+    <a href="{{ url_for('bank.daily_balances') }}" class="btn btn-secondary btn-sm">📅 {{ tr('Dnevna stanja') }}</a>
+    <a href="{{ url_for('bank.fx_index') }}" class="btn btn-secondary btn-sm">🌍 {{ tr('Devizni izvodi') }}</a>
+  </div>
+</div>
+
+
+{# Ingestion widget #}
+<!-- KPIs -->
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+  <div class="kpi-card kpi-card--green">
+    <div class="kpi-card__label">{{ tr('Ukupno prihodi') }}</div>
+    <div class="kpi-card__value" style="font-size:1.4rem;">{{ money(kpi.total_in) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr("Credit transakcije") }}</div>
+  </div>
+  <div class="kpi-card kpi-card--red">
+    <div class="kpi-card__label">{{ tr('Ukupno rashodi') }}</div>
+    <div class="kpi-card__value" style="font-size:1.4rem;">{{ money(kpi.total_out) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr("Debit transakcije") }}</div>
+  </div>
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Broj transakcija') }}</div>
+    <div class="kpi-card__value" style="font-size:1.4rem;">{{ kpi.cnt or '—' }}</div>
+    <div class="kpi-card__sub">{{ tr('U izabranom filteru') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Nealocirano') }}</div>
+    <div class="kpi-card__value" style="font-size:1.4rem;">{{ kpi.unallocated or '0' }}</div>
+    <div class="kpi-card__sub">{{ tr('Čeka alokaciju') }}</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 260px;gap:20px;">
+<div>
+
+<!-- Filters -->
+<form method="get" id="filter-form">
+<div class="filter-bar">
+  <div class="form-group">
+    <label>{{ tr('Račun') }}</label>
+    <select name="account">
+      <option value="">{{ tr('Svi') }}</option>
+      {% for a in accounts %}
+        <option value="{{ a.account }}" {{ 'selected' if filters.account == a.account }}>
+          {{ account_labels.get(a.account, a.account) }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Smer') }}</label>
+    <select name="direction">
+      <option value="">{{ tr("Oba") }}</option>
+      <option value="credit" {{ 'selected' if filters.direction == 'credit' }}>{{ tr('Prihod (credit)') }}</option>
+      <option value="debit"  {{ 'selected' if filters.direction == 'debit' }}>{{ tr('Rashod (debit)') }}</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Alokacija') }}</label>
+    <select name="allocated">
+      <option value="">{{ tr('Sve') }}</option>
+      <option value="0" {{ 'selected' if filters.allocated == '0' }}>{{ tr('Nealocirano') }}</option>
+      <option value="1" {{ 'selected' if filters.allocated == '1' }}>{{ tr('Alocirano') }}</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Od datuma') }}</label>
+    <input type="date" name="date_from" value="{{ filters.date_from }}">
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Do datuma') }}</label>
+    <input type="date" name="date_to" value="{{ filters.date_to }}">
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Pretraga') }}</label>
+    <input type="text" name="search" value="{{ filters.search }}" placeholder="{{ tr('Kontrastrana, svrha, iznos...') }}">
+  </div>
+  <div class="form-group">
+    <label>&nbsp;</label>
+    <div style="display:flex;gap:6px;">
+      <button type="submit" class="btn btn-primary btn-sm">{{ tr('Filtriraj') }}</button>
+      <a href="{{ url_for('bank.index') }}" class="btn btn-ghost btn-sm">{{ tr('Reset') }}</a>
+    </div>
+  </div>
+</div>
+</form>
+
+<!-- Bulk actions bar -->
+<div style="background:var(--surface);border:1px solid var(--border-soft);
+            border-radius:var(--r-md);padding:10px 14px;margin-bottom:10px;">
+
+  {# Hidden filter state — passed to bulk endpoints when select_all=1 #}
+  <input type="hidden" id="f_account" value="{{ filters.account }}">
+  <input type="hidden" id="f_direction" value="{{ filters.direction }}">
+  <input type="hidden" id="f_allocated" value="{{ filters.allocated }}">
+  <input type="hidden" id="f_date_from" value="{{ filters.date_from }}">
+  <input type="hidden" id="f_date_to" value="{{ filters.date_to }}">
+  <input type="hidden" id="f_search" value="{{ filters.search }}">
+
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <span style="font-size:.82rem;color:var(--ink-muted);">{{ tr('Označeno:') }} <strong id="checked-count">0</strong></span>
+
+    <form method="post" action="{{ url_for('bank.bulk_allocate') }}" id="bulk-form" style="display:flex;gap:4px;align-items:center;">
+      <input type="hidden" name="select_all" id="bulk-select-all" value="0">
+      <input type="hidden" name="f_account" id="bulk-f-account" value="">
+      <input type="hidden" name="f_direction" id="bulk-f-direction" value="">
+      <input type="hidden" name="f_allocated" id="bulk-f-allocated" value="">
+      <input type="hidden" name="f_date_from" id="bulk-f-date_from" value="">
+      <input type="hidden" name="f_date_to" id="bulk-f-date_to" value="">
+      <input type="hidden" name="f_search" id="bulk-f-search" value="">
+
+      <select name="bulk_tag" id="bulk-tag-select" onchange="handleBulkTag(this)" style="font-size:.78rem;padding:4px 8px;border-radius:var(--r-sm);border:1px solid var(--border);">
+        <option value="">{{ tr('— bez taga —') }}</option>
+        {% if fixed_tags %}
+          <optgroup label="Troškovi">
+            {% for t in fixed_tags if t.type == 'expense' %}
+              <option value="{{ t.name }}">{{ t.name }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Prihodi">
+            {% for t in fixed_tags if t.type == 'income' %}
+              <option value="{{ t.name }}">{{ t.name }}</option>
+            {% endfor %}
+          </optgroup>
+        {% endif %}
+      </select>
+      <input type="text" name="bulk_tag_new" id="bulk-tag-new" placeholder="{{ tr('Novi tag...') }}" style="display:none;width:130px;padding:4px 8px;font-size:.78rem;">
+      <button type="submit" class="btn btn-secondary btn-sm" onclick="return prepareBulk()">{{ tr('✓ Tag označene') }}</button>
+    </form>
+
+    <form method="post" action="{{ url_for('bank.bulk_assign_fixed_cost') }}" id="bulk-fc-form" style="display:inline;">
+      <input type="hidden" name="select_all_results" id="fc-select-all" value="0">
+      <input type="hidden" name="selected_ids" id="fc-selected-ids">
+      <input type="hidden" name="exclude_ids" id="fc-exclude-ids">
+      <input type="hidden" name="f_account" value="{{ filters.account }}">
+      <input type="hidden" name="f_direction" value="{{ filters.direction }}">
+      <input type="hidden" name="f_allocated" value="{{ filters.allocated }}">
+      <input type="hidden" name="f_tag" value="{{ filters.tag }}">
+      <input type="hidden" name="f_date_from" value="{{ filters.date_from }}">
+      <input type="hidden" name="f_date_to" value="{{ filters.date_to }}">
+      <input type="hidden" name="f_search" value="{{ filters.search }}">
+      <input type="hidden" name="f_page" value="{{ page }}">
+
+      <select name="fixed_cost_tag_id" required style="font-size:.78rem;padding:4px 8px;border-radius:var(--r-sm);border:1px solid var(--border);">
+        <option value="">{{ tr('— Fiksni trošak —') }}</option>
+        {% if fixed_tags %}
+          <optgroup label="Troškovi">
+            {% for t in fixed_tags if t.type == 'expense' %}
+              <option value="{{ t.tag_id }}">{{ t.name }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Prihodi">
+            {% for t in fixed_tags if t.type == 'income' %}
+              <option value="{{ t.tag_id }}">{{ t.name }}</option>
+            {% endfor %}
+          </optgroup>
+        {% endif %}
+      </select>
+      <button type="submit" class="btn btn-primary btn-sm" onclick="return prepareFixedCostBulk()">{{ tr('→ Fiksni troškovi') }}</button>
+    </form>
+
+    <button type="button" class="btn btn-ghost btn-sm" onclick="toggleAll()">{{ tr('Oznaci stranicu') }}</button>
+  </div>
+
+  {# Select-all-results banner — shown after page-select, offers to extend to full filter #}
+  <div id="select-all-banner" style="display:none;margin-top:8px;padding:8px 12px;
+       background:#fff8e1;border-radius:var(--r-sm);font-size:.82rem;color:var(--ink);
+       border:1px solid #ffe082;">
+    {{ tr('Označena je samo ova stranica (') }}<span id="page-count">0</span> {{ tr('transakcija).') }}
+    <button type="button" class="btn btn-primary btn-sm" style="margin-left:8px;"
+            onclick="selectAllResults()">
+      {{ tr('Oznaci svih') }} <strong>{{ count }}</strong> {{ tr('rezultata filtera') }}
+    </button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="cancelSelectAll()">×</button>
+  </div>
+  <div id="all-selected-banner" style="display:none;margin-top:8px;padding:8px 12px;
+       background:#e8f5e9;border-radius:var(--r-sm);font-size:.82rem;color:var(--ink);
+       border:1px solid #a5d6a7;">
+    {{ tr('Svih') }} <strong>{{ count }}</strong> {{ tr('transakcija iz filtera je označeno. Akcije će se primeniti na sve.') }}
+    <button type="button" class="btn btn-ghost btn-sm" onclick="cancelSelectAll()">{{ tr('× Poništi') }}</button>
+  </div>
+</div>
+
+<!-- Table -->
+<form id="tx-table-form">
+<div class="card">
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width:32px;"><input type="checkbox" id="check-all" onchange="toggleAll()"></th>
+          <th data-sort="date">{{ tr('Datum') }}</th>
+          <th>{{ tr('Račun') }}</th>
+          <th data-sort="str">{{ tr('Kontrastrana') }}</th>
+          <th style="max-width:260px;">{{ tr('Svrha') }}</th>
+          <th data-sort="num" class="text-right">{{ tr('Iznos') }}</th>
+          <th>{{ tr('Smer') }}</th>
+          <th>Tag</th>
+          <th>{{ tr("Alok.") }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr id="row-{{ r.transaction_id }}" {% if r.allocated %}style="background:rgba(76,175,80,.08);"{% endif %}>
+          <td><input type="checkbox" class="tx-cb" value="{{ r.transaction_id }}" onchange="updateCount()"></td>
+          <td style="white-space:nowrap;font-size:.82rem;">{{ r.date }}</td>
+          <td style="font-size:.75rem;color:var(--ink-muted);">
+            {{ account_labels.get(r.account, r.account)[-7:] }}
+          </td>
+          <td style="font-size:.82rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            {{ r.counterparty or '—' }}
+            {% if latest_ingestion and r.created_at and r.created_at[:10] == latest_ingestion %}
+              <span class="badge badge-green" style="font-size:.65rem;margin-left:4px;">{{ tr('NOVO') }}</span>
+            {% endif %}
+          </td>
+          <td style="font-size:.78rem;color:var(--ink-muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+              title="{{ r.purpose }}{% if r.payment_period %} | {{ r.payment_period }}{% endif %}">
+            {{ r.purpose or '—' }}
+            {% if r.payment_period %}
+              <br><span style="font-size:.72rem;color:var(--ink-ghost);">{{ r.payment_period }}</span>
+            {% endif %}
+          </td>
+          <td class="num" style="font-weight:600;{% if r.direction=='credit' %}color:var(--green);{% else %}color:var(--red);{% endif %}">
+            {% if r.direction == 'credit' %}+{% else %}−{% endif %}{{ money(r.amount) }}
+          </td>
+          <td>
+            {% if r.direction == 'credit' %}
+              <span class="badge badge-green">{{ tr('IN') }}</span>
+            {% else %}
+              <span class="badge badge-red">{{ tr('OUT') }}</span>
+            {% endif %}
+          </td>
+          <td style="font-size:.75rem;min-width:160px;">
+            <form method="post" action="{{ url_for('bank.inline_tag') }}" style="display:flex;gap:4px;align-items:center;">
+              <input type="hidden" name="transaction_id" value="{{ r.transaction_id }}">
+              <input type="hidden" name="fc_amount" value="{{ r.amount }}">
+              <input type="hidden" name="fc_year" value="{{ r.date[:4] }}">
+              <input type="hidden" name="fc_month" value="{{ r.date[5:7]|int }}">
+              <input type="hidden" name="allocated" value="1">
+              <select name="manual_tag" style="font-size:.72rem;padding:2px 4px;border-radius:var(--r-sm);border:1px solid var(--border);max-width:120px;"
+                      onchange="this.form.submit()">
+                <option value="">— tag —</option>
+                {% if r.manual_tag and (not fixed_tags or r.manual_tag not in fixed_tags|map(attribute='name')|list) %}
+                  <option value="{{ r.manual_tag }}" selected>{{ r.manual_tag }}</option>
+                {% endif %}
+                {% if fixed_tags %}
+                  <optgroup label="Troškovi">
+                    {% for t in fixed_tags if t.type == 'expense' %}
+                      <option value="{{ t.name }}" {{ 'selected' if (r.manual_tag == t.name or r.auto_tag == t.name) }}>{{ t.name }}</option>
+                    {% endfor %}
+                  </optgroup>
+                  <optgroup label="Prihodi">
+                    {% for t in fixed_tags if t.type == 'income' %}
+                      <option value="{{ t.name }}" {{ 'selected' if (r.manual_tag == t.name or r.auto_tag == t.name) }}>{{ t.name }}</option>
+                    {% endfor %}
+                  </optgroup>
+                {% endif %}
+              </select>
+            </form>
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('bank.inline_tag') }}" style="display:inline;">
+              <input type="hidden" name="transaction_id" value="{{ r.transaction_id }}">
+              <input type="hidden" name="allocated" value="{{ '0' if r.allocated else '1' }}">
+              <button class="btn btn-ghost btn-sm" style="padding:3px 8px;"
+                      title="{{ tr('Poništi alokaciju') if r.allocated else tr('Označi alocirano') }}">
+                {% if r.allocated %}
+                  <span style="color:var(--green);">✓</span>
+                {% else %}
+                  <span style="color:var(--ink-ghost);">○</span>
+                {% endif %}
+              </button>
+            </form>
+          </td>
+          <td>
+            <a href="{{ url_for('bank.detail', transaction_id=r.transaction_id) }}"
+               class="btn btn-ghost btn-sm">›</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="10">
+            <div class="empty-state"><p>{{ tr('Nema transakcija za izabrane filtere.') }}</p></div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</form>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}<a href="{{ url_for('bank.index', page=page-1, **filters) }}">‹</a>{% endif %}
+  {% for p in range(1, total_pages+1) %}
+    {% if p == page %}<span class="current">{{ p }}</span>
+    {% elif p <= 2 or p >= total_pages-1 or (p >= page-2 and p <= page+2) %}
+      <a href="{{ url_for('bank.index', page=p, **filters) }}">{{ p }}</a>
+    {% elif p == 3 or p == total_pages-2 %}<span>…</span>{% endif %}
+  {% endfor %}
+  {% if page < total_pages %}<a href="{{ url_for('bank.index', page=page+1, **filters) }}">›</a>{% endif %}
+</div>
+{% endif %}
+
+</div><!-- end main col -->
+
+<!-- Sidebar -->
+<div style="display:flex;flex-direction:column;gap:16px;">
+
+  <!-- Account summary -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Po računu') }}</span></div>
+    <div class="card-body" style="padding:12px 16px;">
+      {% for a in account_summary %}
+      <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border-soft);">
+        <div style="font-size:.78rem;font-weight:600;color:var(--ink);margin-bottom:6px;">
+          {{ account_labels.get(a.account, a.account) }}
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:2px;">
+          <span class="text-muted">{{ tr('Prihodi') }}</span>
+          <span style="color:var(--green);font-weight:500;">+{{ "{:,.0f}".format(a.total_in).replace(",",".") }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.78rem;">
+          <span class="text-muted">{{ tr('Rashodi') }}</span>
+          <span style="color:var(--red);font-weight:500;">−{{ "{:,.0f}".format(a.total_out).replace(",",".") }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Tags from fixed_cost_tags -->
+  {% if fixed_tags %}
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">{{ tr("Tagovi") }}</span>
+      <a href="{{ url_for('fixed_costs.tags') }}" style="font-size:.72rem;color:var(--ink-muted);">{{ tr("Upravljaj →") }}</a>
+    </div>
+    <div class="card-body" style="padding:12px 16px;">
+      {% for t in fixed_tags %}
+      <span style="display:inline-block;margin:3px;">
+        <span class="badge {{ 'badge-red' if t.type == 'expense' else 'badge-green' }}">{{ t.name }}</span>
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Quick filter shortcuts -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr("Brzi filteri") }}</span></div>
+    <div class="card-body" style="padding:12px 16px;display:flex;flex-direction:column;gap:6px;">
+      <a href="{{ url_for('bank.index', allocated='0') }}" class="btn btn-secondary btn-sm" style="justify-content:flex-start;">
+        ⚠ {{ tr('Nealocirano') }} ({{ kpi.unallocated or 0 }})
+      </a>
+      <a href="{{ url_for('bank.index', direction='credit') }}" class="btn btn-secondary btn-sm" style="justify-content:flex-start;">
+        {{ tr('↓ Samo prihodi') }}
+      </a>
+      <a href="{{ url_for('bank.index', direction='debit') }}" class="btn btn-secondary btn-sm" style="justify-content:flex-start;">
+        {{ tr('↑ Samo rashodi') }}
+      </a>
+    </div>
+  </div>
+
+</div><!-- end sidebar -->
+</div><!-- end grid -->
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── state ─────────────────────────────────────────────────────────────
+let allChecked  = false;   // page-level checkbox state
+let selectingAll   = false;   // true when "all results" mode is active
+const excludedIds  = new Set(); // IDs explicitly unchecked while in select-all mode
+
+// ── individual checkbox changed ────────────────────────────────────
+function updateCount() {
+  if (selectingAll) {
+    const checked = Array.from(document.querySelectorAll('.tx-cb')).filter(cb => cb.checked);
+    const unchecked = Array.from(document.querySelectorAll('.tx-cb')).filter(cb => !cb.checked);
+    
+    // Update excluded set
+    unchecked.forEach(cb => excludedIds.add(cb.value));
+    checked.forEach(cb => excludedIds.delete(cb.value));
+    
+    const effective = {{ count }} - excludedIds.size;
+    document.getElementById('checked-count').textContent = effective;
+    const bannerEl = document.getElementById('all-selected-banner');
+    if (excludedIds.size > 0) {
+      bannerEl.innerHTML = `Svih <strong>${effective}</strong> transakcija iz filtera je označeno — <em>${excludedIds.size} isključeno</em>. Akcije će se primeniti na sve osim isključenih. <button type="button" class="btn btn-ghost btn-sm" onclick="cancelSelectAll()">× Poništi</button>`;
+    } else {
+      bannerEl.innerHTML = `Svih <strong>{{ count }}</strong> transakcija iz filtera je označeno. Akcije će se primeniti na sve. <button type="button" class="btn btn-ghost btn-sm" onclick="cancelSelectAll()">× Poništi</button>`;
+    }
+    return;
+  }
+  const n = document.querySelectorAll('.tx-cb:checked').length;
+  document.getElementById('checked-count').textContent = n;
+}
+
+// ── page-level "select all" toggle ───────────────────────────────
+function toggleAll() {
+  if (selectingAll) { cancelSelectAll(); return; }
+  allChecked = !allChecked;
+  document.querySelectorAll('.tx-cb').forEach(cb => cb.checked = allChecked);
+  document.getElementById('check-all').checked = allChecked;
+  updateCount();
+
+  const total = {{ count }};
+  const pageCount = document.querySelectorAll('.tx-cb').length;
+  if (allChecked && total > pageCount) {
+    document.getElementById('page-count').textContent = pageCount;
+    document.getElementById('select-all-banner').style.display = 'block';
+    document.getElementById('all-selected-banner').style.display = 'none';
+  } else {
+    document.getElementById('select-all-banner').style.display = 'none';
+    document.getElementById('all-selected-banner').style.display = 'none';
+  }
+}
+
+function selectAllResults(){
+  selectingAll = true;
+  excludedIds.clear();
+  document.getElementById('select-all-banner').style.display = 'none';
+  document.getElementById('all-selected-banner').style.display = 'block';
+  document.getElementById('checked-count').textContent = '{{ count }}';
+  document.querySelectorAll('.tx-cb').forEach(cb => cb.checked = true);
+}
+
+function cancelSelectAll(){
+  selectingAll = false;
+  excludedIds.clear();
+  document.getElementById('select-all-banner').style.display = 'none';
+  document.getElementById('all-selected-banner').style.display = 'none';
+  allChecked = false;
+  document.querySelectorAll('.tx-cb').forEach(cb => cb.checked = false);
+  document.getElementById('check-all').checked = false;
+  document.getElementById('checked-count').textContent = '0';
+}
+
+// ── prepare bulk form before submit ──────────────────────────────────
+function prepareBulk(){
+  const form = document.getElementById('bulk-form');
+
+  if (selectingAll) {
+    form.querySelector('#bulk-select-all').value = '1';
+    ['account','direction','allocated','date_from','date_to','search'].forEach(k => {
+      const src = document.getElementById('f_' + k);
+      const dst = document.getElementById('bulk-f-' + k);
+      if (src && dst) dst.value = src.value;
+    });
+    form.querySelectorAll('input[name="tx_ids"]').forEach(el => el.remove());
+    form.querySelectorAll('input[name="exclude_ids"]').forEach(el => el.remove());
+    excludedIds.forEach(id => {
+      const inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'exclude_ids'; inp.value = id;
+      form.appendChild(inp);
+    });
+  } else {
+    form.querySelector('#bulk-select-all').value = '0';
+    form.querySelectorAll('input[name="tx_ids"]').forEach(el => el.remove());
+    const checked = document.querySelectorAll('.tx-cb:checked');
+    if (!checked.length) { alert('Označite bar jednu transakciju.'); return false; }
+    checked.forEach(cb => {
+      const inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'tx_ids'; inp.value = cb.value;
+      form.appendChild(inp);
+    });
+  }
+  return true;
+}
+
+function handleBulkTag(sel) {
+  const newInput = document.getElementById('bulk-tag-new');
+  newInput.style.display = sel.value === '__new__' ? 'inline-block' : 'none';
+  if (sel.value !== '__new__') newInput.value = '';
+}
+
+// ── prepare fixed cost bulk form ─────────────────────────────────────
+function prepareFixedCostBulk(){
+  const form = document.getElementById('bulk-fc-form');
+  const tagSelect = form.querySelector('select[name="fixed_cost_tag_id"]');
+  
+  if (!tagSelect.value) {
+    alert('Izaberite fiksni trošak tag.');
+    return false;
+  }
+
+  if (selectingAll) {
+    form.querySelector('#fc-select-all').value = '1';
+    form.querySelector('#fc-selected-ids').value = '';
+    form.querySelector('#fc-exclude-ids').value = Array.from(excludedIds).join(',');
+  } else {
+    form.querySelector('#fc-select-all').value = '0';
+    const checked = document.querySelectorAll('.tx-cb:checked');
+    if (!checked.length) {
+      alert('Označite bar jednu transakciju.');
+      return false;
+    }
+    const ids = Array.from(checked).map(cb => cb.value);
+    form.querySelector('#fc-selected-ids').value = ids.join(',');
+    form.querySelector('#fc-exclude-ids').value = '';
+  }
+  
+  return confirm('Dodeliti ' + (selectingAll ? '{{ count }}' : document.querySelectorAll('.tx-cb:checked').length) + ' transakcija fiksnom trošku? Godina i mesec će biti određeni datumom transakcije.');
+}
+
+document.getElementById('bulk-form').addEventListener('submit', function() {
+  const sel = document.getElementById('bulk-tag-select');
+  const newInput = document.getElementById('bulk-tag-new');
+  if (sel.value === '__new__' && newInput.value.trim()) {
+    sel.name = '';
+    newInput.name = 'bulk_tag';
+  } else if (sel.value === '__new__') {
+    sel.value = '';
+  }
+});
+  // Scroll to anchor row after inline edit
+  (function(){
+    var h = window.location.hash;
+    if(h){
+      var el = document.querySelector(h);
+      if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+    }
+  })();
+</script>
+{% endblock %}

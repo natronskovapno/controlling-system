@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ title }}</h1>
+    <p class="page-subtitle">{{ subtitle }}</p>
+  </div>
+</div>
+<div class="card">
+  <div class="card-body">
+    <p><span class="badge badge-amber">{{ tr("U izradi —") }} {{ phase }}</span></p>
+    <p class="text-muted" style="margin-top:10px;">
+      {{ tr('Uvezeno bruto bilansa:') }} <strong>{{ snapshot_count }}</strong>.
+      <a href="{{ url_for('fin_statements.snapshots') }}">{{ tr('Bruto bilansi →') }}</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

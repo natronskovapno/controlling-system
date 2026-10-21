@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Kartice — Transakcije') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val|float != 0 -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Kartice — Transakcije') }}</h1>
+    <p class="page-subtitle">{{ count }} {{ tr('transakcija pronađeno') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('debit_cards.index') }}" class="btn btn-secondary btn-sm">{{ tr("📊 Pivot tabela") }}</a>
+  </div>
+</div>
+
+<!-- KPIs -->
+<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;">
+  <div class="kpi-card kpi-card--red">
+    <div class="kpi-card__label">{{ tr('Ukupan iznos') }}</div>
+    <div class="kpi-card__value" style="font-size:1.4rem;">{{ money(kpi.total) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr("U filteru") }}</div>
+  </div>
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Broj transakcija') }}</div>
+    <div class="kpi-card__value" style="font-size:1.4rem;">{{ kpi.cnt or 0 }}</div>
+    <div class="kpi-card__sub">{{ tr('Ukupno') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Prosečan iznos') }}</div>
+    <div class="kpi-card__value" style="font-size:1.4rem;">{{ money(kpi.avg_tx) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('Po transakciji') }}</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 280px;gap:20px;">
+<div>
+
+<!-- Filters -->
+<form method="get">
+<div class="filter-bar">
+  <div class="form-group">
+    <label>{{ tr('Entitet') }}</label>
+    <select name="counterparty">
+      <option value="">{{ tr('Svi') }}</option>
+      {% for c in all_counterparties %}
+        <option value="{{ c.counterparty }}" {{ 'selected' if filters.counterparty == c.counterparty }}>
+          {{ c.counterparty }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Klasifikacija') }}</label>
+    <select name="classification">
+      <option value="">{{ tr('Sve') }}</option>
+      {% for c in all_classifications %}
+        <option value="{{ c.classification }}" {{ 'selected' if filters.classification == c.classification }}>
+          {{ c.classification }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Od datuma') }}</label>
+    <input type="date" name="date_from" value="{{ filters.date_from }}">
+  </div>
+  <div class="form-group">
+    <label>{{ tr('Do datuma') }}</label>
+    <input type="date" name="date_to" value="{{ filters.date_to }}">
+  </div>
+  <div class="form-group">
+    <label>&nbsp;</label>
+    <div style="display:flex;gap:6px;">
+      <button type="submit" class="btn btn-primary btn-sm">{{ tr('Filtriraj') }}</button>
+      <a href="{{ url_for('debit_cards.transactions') }}" class="btn btn-ghost btn-sm">{{ tr('Reset') }}</a>
+    </div>
+  </div>
+</div>
+</form>
+
+<!-- Table -->
+<div class="card" style="margin-top:16px;">
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>{{ tr('Datum') }}</th>
+          <th>{{ tr('Entitet') }}</th>
+          <th class="text-right">{{ tr('Iznos') }}</th>
+          <th>{{ tr('Klasifikacija') }}</th>
+          <th>{{ tr('Beleške') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tx in transactions %}
+        <tr id="row-{{ tx.card_tx_id }}">
+          <td style="white-space:nowrap;font-size:.82rem;">{{ tx.date }}</td>
+          <td style="font-size:.82rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+              title="{{ tx.counterparty }}">
+            {{ tx.counterparty or '—' }}
+          </td>
+          <td class="num" style="font-weight:600;color:var(--red);">
+            −{{ money(tx.amount) }}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('debit_cards.update_transaction', card_tx_id=tx.card_tx_id) }}"
+                  style="display:inline;">
+              <input type="hidden" name="notes" value="{{ tx.notes or '' }}">
+              <select name="classification" 
+                      style="font-size:.75rem;padding:3px 6px;border-radius:var(--r-sm);border:1px solid var(--border);"
+                      onchange="this.form.submit()">
+                <option value="Unclassified" {{ 'selected' if tx.classification == 'Unclassified' }}>{{ tr("Unclassified") }}</option>
+                {% for c in all_classifications %}
+                  {% if c.classification != 'Unclassified' %}
+                  <option value="{{ c.classification }}" {{ 'selected' if tx.classification == c.classification }}>
+                    {{ c.classification }}
+                  </option>
+                  {% endif %}
+                {% endfor %}
+              </select>
+            </form>
+          </td>
+          <td style="font-size:.78rem;color:var(--ink-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;"
+              title="{{ tx.notes }}">
+            {{ tx.notes or '—' }}
+          </td>
+          <td>
+            <button class="btn btn-ghost btn-sm" onclick="editNotes({{ tx.card_tx_id }}, '{{ tx.notes or '' }}', '{{ tx.classification }}')">
+              ✎
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6">
+            <div class="empty-state"><p>{{ tr('Nema transakcija za izabrane filtere.') }}</p></div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}<a href="{{ url_for('debit_cards.transactions', page=page-1, **filters) }}">‹</a>{% endif %}
+  {% for p in range(1, total_pages+1) %}
+    {% if p == page %}<span class="current">{{ p }}</span>
+    {% elif p <= 2 or p >= total_pages-1 or (p >= page-2 and p <= page+2) %}
+      <a href="{{ url_for('debit_cards.transactions', page=p, **filters) }}">{{ p }}</a>
+    {% elif p == 3 or p == total_pages-2 %}<span>…</span>{% endif %}
+  {% endfor %}
+  {% if page < total_pages %}<a href="{{ url_for('debit_cards.transactions', page=page+1, **filters) }}">›</a>{% endif %}
+</div>
+{% endif %}
+
+</div><!-- end main col -->
+
+<!-- Sidebar -->
+<div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr("Dostupne klasifikacije") }}</span></div>
+    <div class="card-body" style="padding:12px 16px;font-size:.78rem;">
+      <p style="margin-bottom:8px;color:var(--ink-muted);">
+        {{ tr('Kliknite na dropdown u koloni "Klasifikacija" da promenite klasifikaciju transakcije.') }}
+      </p>
+      <div style="margin-top:12px;">
+        {% for c in all_classifications %}
+        <div style="margin-bottom:4px;">
+          <span class="badge badge-gray" style="font-size:.7rem;">{{ c.classification }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <div class="card-header"><span class="card-title">{{ tr('Beleške') }}</span></div>
+    <div class="card-body" style="padding:12px 16px;font-size:.78rem;color:var(--ink-muted);">
+      <p>
+        {{ tr('Kliknite ✎ ikonicu da dodate ili uredite beleške za transakciju.') }}
+      </p>
+    </div>
+  </div>
+</div><!-- end sidebar -->
+
+</div><!-- end grid -->
+
+<!-- Edit notes modal (simple prompt-based) -->
+<script>
+function editNotes(cardTxId, currentNotes, currentClass) {
+  const newNotes = prompt('Unesite beleške:', currentNotes);
+  if (newNotes !== null) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `/debit-cards/${cardTxId}/update`;
+    
+    const notesInput = document.createElement('input');
+    notesInput.type = 'hidden';
+    notesInput.name = 'notes';
+    notesInput.value = newNotes;
+    
+    const classInput = document.createElement('input');
+    classInput.type = 'hidden';
+    classInput.name = 'classification';
+    classInput.value = currentClass;
+    
+    form.appendChild(notesInput);
+    form.appendChild(classInput);
+    document.body.appendChild(form);
+    form.submit();
+  }
+}
+  // Scroll to anchor row after inline edit
+  (function(){
+    var h = window.location.hash;
+    if(h){
+      var el = document.querySelector(h);
+      if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+    }
+  })();
+</script>
+{% endblock %}

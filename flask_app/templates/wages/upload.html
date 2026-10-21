@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Zarade — Upload') }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Upload template') }}</h1>
+    <p class="page-subtitle">{{ tr('Izaberi Excel fajl — automatski se detektuje format (knjigovodstvo A/B, fizikalci C)') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('wages.index') }}" class="btn btn-secondary btn-sm">{{ tr('← Nazad na pregled') }}</a>
+  </div>
+</div>
+
+<div class="section-grid" style="grid-template-columns:1fr 340px;gap:24px;align-items:start;">
+
+  {# Upload form #}
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">{{ tr('Izaberi fajl') }}</span>
+    </div>
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data">
+        <div class="form-group" style="margin-bottom:20px;">
+          <label>{{ tr("Excel fajl (.xlsx, .xls)") }}</label>
+          <input type="file" name="file" accept=".xlsx,.xls"
+                 style="width:100%;padding:10px 12px;border:2px dashed var(--border);border-radius:var(--r-md);background:var(--canvas);cursor:pointer;">
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button type="submit" class="btn btn-primary">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="width:14px;height:14px;">
+              <path d="M8 2v8m0 0L5 7m3 3l3-3"/><path d="M3 12h10"/>
+            </svg>
+            {{ tr('Učitaj i pregledaj') }}
+          </button>
+        </div>
+        <p class="text-muted" style="font-size:.78rem;margin-top:12px;">
+          {{ tr('Podaci') }} <strong>{{ tr('neće biti upisani') }}</strong> {{ tr('dok ne potvrdite na sledećem ekranu.') }}
+        </p>
+      </form>
+    </div>
+  </div>
+
+  {# Format guide #}
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">{{ tr('Podržani formati') }}</span>
+    </div>
+    <div class="card-body" style="font-size:.84rem;">
+      <div style="margin-bottom:16px;">
+        <span class="badge badge-green" style="margin-bottom:6px;">{{ tr('Format A — knjigovodstvo (novi)') }}</span>
+        <p class="text-muted">{{ tr('Datumi kao redovi, imena zaposlenih kao kolone.') }}</p>
+      </div>
+      <div style="margin-bottom:16px;">
+        <span class="badge badge-blue" style="margin-bottom:6px;">{{ tr('Format B — knjigovodstvo (stari)') }}</span>
+        <p class="text-muted">{{ tr('Datumi kao kolone, imena kao redovi. Može sadržati brojeve računa.') }}</p>
+      </div>
+      <div>
+        <span class="badge badge-amber" style="margin-bottom:6px;">{{ tr("Format C — fizikalci") }}</span>
+        <p class="text-muted">{{ tr('Kolone:') }} <em>{{ tr("Datumi") }}</em>, <em>{{ tr('Za uplatu') }}</em>, <em>{{ tr('Cena sata') }}</em>.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

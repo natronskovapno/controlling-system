@@ -1,0 +1,616 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Zarade') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != '' and val|float != 0 -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Zarade') }}</h1>
+    <p class="page-subtitle">
+      {% if tab == 'stalni' %}{{ tr('Stalni zaposleni — mesečne plate sa istorijom') }}
+      {% else %}{{ tr('Pregled po mesecima —') }} {{ kpis.date_min or '…' }} → {{ kpis.date_max or '…' }}
+      {% endif %}
+    </p>
+  </div>
+  <div class="page-header__actions">
+    {% if tab != 'stalni' %}
+    <a href="{{ url_for('wages.upload') }}" class="btn btn-primary btn-sm">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="width:14px;height:14px;">
+        <path d="M8 2v8m0 0L5 7m3 3l3-3"/><path d="M3 12h10"/>
+      </svg>
+      {{ tr('Upload template') }}
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Tab navigation ────────────────────────────────────────────────── #}
+<div style="display:flex;gap:4px;margin-bottom:24px;">
+  <a href="{{ url_for('wages.index') }}"
+     class="btn {% if tab == 'dnevnice' %}btn-primary{% else %}btn-secondary{% endif %}">
+    {{ tr("Dnevnice") }}
+  </a>
+  <a href="{{ url_for('wages.stalni') }}"
+     class="btn {% if tab == 'stalni' %}btn-primary{% else %}btn-secondary{% endif %}">
+    {{ tr("Stalni zaposleni") }}
+  </a>
+  <a href="{{ url_for('wages.zaposleni') }}"
+     class="btn {% if tab == 'zaposleni' %}btn-primary{% else %}btn-secondary{% endif %}">
+    {{ tr('Zaposleni') }}
+  </a>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════
+   TAB: STALNI ZAPOSLENI WITH SALARY HISTORY
+══════════════════════════════════════════════════════════════════ #}
+{% if tab == 'stalni' %}
+
+{# KPI cards #}
+<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:28px;">
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Stalno zaposlenih') }}</div>
+    <div class="kpi-card__value" style="font-size:1.9rem;">{{ employees|length }}</div>
+    <div class="kpi-card__sub">{{ tr('aktivnih zaposlenih') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Ukupno neto / mesec') }}</div>
+    <div class="kpi-card__value" style="font-size:1.5rem;">{{ money(total_net) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('tekuće plate') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--red">
+    <div class="kpi-card__label">{{ tr('Ukupno bruto / mesec') }}</div>
+    <div class="kpi-card__value" style="font-size:1.5rem;">{{ money(total_gross) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('sa porezima i doprinosima') }}</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header"><span class="card-title">{{ tr('Kako funkcioniše') }}</span></div>
+  <div style="padding:14px 20px;font-size:.83rem;color:var(--ink-muted);line-height:1.6;">
+    {{ tr('Unesite') }} <strong>{{ tr('novu platu') }}</strong>{{ tr("sa datumom početka primene. Sistem će automatski zatvoriti prethodnu platu danom pre nove. Svaka izmena plate ostaje sačuvana u istoriji, omogućavajući vam da pratite sve promene plata kroz vreme. Kada dodate novog zaposlenog, njegova početna plata postaje aktivna odmah.") }}</div>
+</div>
+
+{# Employee Cards Grid #}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+{% for emp in employees %}
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">{{ emp.employee_name }}</span>
+    <div style="display:flex;gap:6px;align-items:center;">
+      {% if emp.role %}
+        <span class="badge badge-gray" style="font-size:.72rem;">{{ emp.role }}</span>
+      {% endif %}
+      <span class="badge badge-green" style="font-size:.72rem;">{{ emp.periods|length }} {{ tr('perioda') if emp.periods|length > 1 else tr('period') }}</span>
+    </div>
+  </div>
+  
+  {# Summary bar #}
+  <div style="padding:10px 16px;border-bottom:1px solid var(--border-soft);">
+    <div style="display:flex;gap:20px;font-size:.82rem;flex-wrap:wrap;">
+      <div><span style="color:var(--ink-muted);">{{ tr('Trenutna neto:') }}</span> <strong>{{ money(emp.current_net) }} RSD</strong></div>
+      <div><span style="color:var(--ink-muted);">{{ tr('Bruto trošak:') }}</span> <strong style="color:var(--red);">{{ money(emp.current_gross) }} RSD</strong></div>
+      <div><span style="color:var(--ink-muted);">{{ tr("Istorija:") }}</span> <strong>{{ emp.periods|length }} {{ 'period' if emp.periods|length == 1 else 'perioda' }}</strong></div>
+    </div>
+  </div>
+
+  {# Add new salary period form #}
+  <div style="padding:12px 16px;border-bottom:1px solid var(--border-soft);">
+    <div style="font-size:.72rem;font-weight:600;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
+      {{ tr('Dodaj novu platu') }}
+    </div>
+    <form method="post" action="{{ url_for('wages.stalni_add_period') }}">
+      <input type="hidden" name="employee_name" value="{{ emp.employee_name }}">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+        <div>
+          <label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:2px;">{{ tr('Neto (RSD)') }}</label>
+          <input type="number" name="monthly_net" min="0" step="0.01"
+                 placeholder="{{ tr('npr. 100000') }}"
+                 style="font-size:.88rem;padding:5px 10px;width:110px;font-weight:600;"
+                 oninput="estimateGross_{{ loop.index }}(this)">
+        </div>
+        <div>
+          <label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:2px;">{{ tr('Bruto (RSD)') }}</label>
+          <input type="number" name="monthly_gross" min="0" step="0.01"
+                 placeholder="{{ tr('×1.76 auto') }}"
+                 id="gross_{{ loop.index }}"
+                 style="font-size:.82rem;padding:5px 8px;width:110px;">
+        </div>
+        <div>
+          <label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:2px;">{{ tr('Važi od') }}</label>
+          <input type="date" name="valid_from" required
+                 style="font-size:.82rem;padding:5px 8px;">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm" style="padding:5px 14px;">{{ tr('+ Dodaj') }}</button>
+      </div>
+    </form>
+  </div>
+
+  {# Salary history table #}
+  {% if emp.periods %}
+  <div style="padding:10px 16px;">
+    <div style="font-size:.72rem;font-weight:600;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">
+      {{ tr('Istorija stopa') }}
+    </div>
+    <table class="data-table" style="font-size:.8rem;">
+      <thead>
+        <tr>
+          <th>{{ tr('Stopa') }}</th>
+          <th>{{ tr('Važi od') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for period in emp.periods %}
+        <tr {% if period.is_active %}style="background:#e8f5e9;"{% endif %}>
+          <td>
+            <div style="font-weight:600;">{{ money(period.monthly_net) }} RSD</div>
+            <div style="font-size:.72rem;color:var(--ink-muted);">{{ tr('bruto:') }} {{ money(period.monthly_gross) }}</div>
+          </td>
+          <td>
+            <div>{{ period.valid_from }}</div>
+            {% if period.valid_to %}
+              <div style="font-size:.72rem;color:var(--ink-muted);">do {{ period.valid_to }}</div>
+            {% else %}
+              <span class="badge badge-green" style="font-size:.68rem;">{{ tr("aktivna") }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('wages.stalni_delete', salary_id=period.id) }}"
+                  style="display:inline;" onsubmit="return confirm('Obriši ovaj period plate?')">
+              <button type="submit" class="btn btn-ghost btn-sm"
+                      style="font-size:.72rem;color:var(--red);">×</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+
+{# Add New Employee Card #}
+<div class="card" style="border:2px dashed var(--border);background:var(--canvas-warm);">
+  <div class="card-header">
+    <span class="card-title">{{ tr('+ Dodaj novog zaposlenog') }}</span>
+  </div>
+  <div style="padding:16px;">
+    <form method="post" action="{{ url_for('wages.stalni_add') }}">
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label style="font-size:.75rem;color:var(--ink-muted);display:block;margin-bottom:4px;">{{ tr('Ime i prezime *') }}</label>
+          <input type="text" name="employee_name" placeholder="{{ tr('npr. Ana Kovačević') }}" required
+                 style="width:100%;padding:6px 10px;">
+        </div>
+        <div>
+          <label style="font-size:.75rem;color:var(--ink-muted);display:block;margin-bottom:4px;">{{ tr('Uloga / pozicija') }}</label>
+          <input type="text" name="role" placeholder="{{ tr('npr. Menadžer') }}"
+                 style="width:100%;padding:6px 10px;">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div>
+            <label style="font-size:.75rem;color:var(--ink-muted);display:block;margin-bottom:4px;">{{ tr('Neto (RSD) *') }}</label>
+            <input type="number" name="monthly_net" step="0.01" min="0" placeholder="80000" required
+                   oninput="estimateGrossNew(this)"
+                   style="width:100%;padding:6px 10px;">
+          </div>
+          <div>
+            <label style="font-size:.75rem;color:var(--ink-muted);display:block;margin-bottom:4px;">{{ tr('Bruto (RSD)') }}</label>
+            <input type="number" name="monthly_gross" step="0.01" min="0" id="gross-new"
+                   placeholder="{{ tr('×1.76 auto') }}"
+                   style="width:100%;padding:6px 10px;">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:.75rem;color:var(--ink-muted);display:block;margin-bottom:4px;">{{ tr('Datum početka') }}</label>
+          <input type="date" name="valid_from"
+                 style="width:100%;padding:6px 10px;">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">{{ tr('+ Dodaj zaposlenog') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+</div>{# /grid #}
+
+{# ══════════════════════════════════════════════════════════════════
+   TAB: ZAPOSLENI (Tax Brackets)
+══════════════════════════════════════════════════════════════════ #}
+{% elif tab == 'zaposleni' %}
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <span class="card-title">{{ tr('Kako funkcioniše') }}</span>
+    <form method="post" action="{{ url_for('wages.zaposleni_recalc_all') }}" style="display:inline;">
+      <button class="btn btn-ghost btn-sm"
+              onclick="return confirm('Preračunaj bruto za sve zaposlene koji imaju definisanu stopu?')">
+        {{ tr('↻ Preračunaj sve bruto troškove') }}
+      </button>
+    </form>
+  </div>
+  <div style="padding:14px 20px;font-size:.83rem;color:var(--ink-muted);line-height:1.6;">
+    {{ tr('Unesite') }} <strong>{{ tr('ukupnu stopu doprinosa') }}</strong> {{ tr('kao procenat neto zarade (npr.') }} <strong>29</strong> {{ tr('za ukupno 29% ili') }} <strong>76</strong>{{ tr("za 76%). Bruto trošak = Neto × (1 + stopa / 100). Svaka stopa važi od datuma koji unesete — starije stope ostaju nepromenjene i primenjuju se na istorijske podatke. Ako zaposleni promeni kategoriju, dodajte novu stopu sa novim datumom.") }}</div>
+</div>
+
+{# Employee Cards Grid #}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+{% for e in employees_data %}
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">{{ e.employee_name }}</span>
+    <div style="display:flex;gap:6px;align-items:center;">
+      <span class="badge badge-gray" style="font-size:.72rem;">{{ e.worker_type }}</span>
+      {% if e.bracket %}
+        <span class="badge badge-green" style="font-size:.72rem;">{{ e.bracket }}%</span>
+      {% else %}
+        <span class="badge badge-amber" style="font-size:.72rem;">{{ tr('⚠ bez stope') }}</span>
+      {% endif %}
+    </div>
+  </div>
+  
+  {# Summary bar #}
+  <div style="padding:10px 16px;border-bottom:1px solid var(--border-soft);">
+    <div style="display:flex;gap:20px;font-size:.82rem;flex-wrap:wrap;">
+      <div><span style="color:var(--ink-muted);">{{ tr('Stavki:') }}</span> <strong>{{ e.wage_rows }}</strong></div>
+      <div><span style="color:var(--ink-muted);">{{ tr('Neto ukupno:') }}</span> <strong>{{ "{:,.0f}".format(e.total_net or 0).replace(",",".") }} RSD</strong></div>
+      {% if e.total_gross and e.total_gross > 0 %}
+      <div><span style="color:var(--ink-muted);">{{ tr('Bruto trošak:') }}</span> <strong style="color:var(--red);">{{ "{:,.0f}".format(e.total_gross).replace(",",".") }} RSD</strong></div>
+      {% else %}
+      <div style="color:var(--amber);font-size:.8rem;">{{ tr('⚠ Bruto nije preračunat') }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Set bracket form #}
+  <div style="padding:12px 16px;border-bottom:1px solid var(--border-soft);">
+    <div style="font-size:.72rem;font-weight:600;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
+      {{ tr('Dodaj / izmeni stopu') }}
+    </div>
+    <form method="post" action="{{ url_for('wages.zaposleni_set_bracket') }}">
+      <input type="hidden" name="employee_name" value="{{ e.employee_name }}">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+        <div>
+          <label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:2px;">{{ tr('Stopa (%)') }}</label>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <input type="number" name="bracket" min="1" max="200" step="0.1"
+                   placeholder="{{ tr('npr. 29') }}"
+                   value="{{ e.bracket if e.bracket else '' }}"
+                   style="font-size:.88rem;padding:5px 10px;width:90px;font-weight:600;">
+            <span style="font-size:.85rem;color:var(--ink-muted);">%</span>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:2px;">{{ tr('Važi od') }}</label>
+          <input type="date" name="valid_from" value="{{ today }}"
+                 style="font-size:.82rem;padding:5px 8px;">
+        </div>
+        <div style="flex:1;min-width:100px;">
+          <label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:2px;">{{ tr('Napomena') }}</label>
+          <input type="text" name="notes" placeholder="{{ tr('opciono') }}"
+                 style="font-size:.82rem;padding:5px 8px;width:100%;">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm" style="padding:5px 14px;">{{ tr('Sačuvaj') }}</button>
+      </div>
+    </form>
+  </div>
+
+  {# Bracket history table #}
+  {% if history[e.employee_name] %}
+  <div style="padding:10px 16px;">
+    <div style="font-size:.72rem;font-weight:600;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">
+      {{ tr('Istorija stopa') }}
+    </div>
+    <table class="data-table" style="font-size:.8rem;">
+      <thead>
+        <tr>
+          <th>{{ tr('Stopa') }}</th>
+          <th>{{ tr('Važi od') }}</th>
+          <th>{{ tr('Napomena') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in history[e.employee_name] %}
+        <tr>
+          <td><strong>{{ h.bracket }}%</strong></td>
+          <td>{{ h.valid_from }}</td>
+          <td style="color:var(--ink-muted);">{{ h.notes or '—' }}</td>
+          <td>
+            <form method="post" action="{{ url_for('wages.zaposleni_delete_bracket', bracket_id=h.id) }}"
+                  style="display:inline;" onsubmit="return confirm('Obriši ovu stopu?')">
+              <button type="submit" class="btn btn-ghost btn-sm"
+                      style="font-size:.72rem;color:var(--red);">×</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+</div>
+
+{% else %}
+
+{# ── KPI Cards ─────────────────────────────────────────────────────── #}
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:28px;">
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Zaposlenih') }}</div>
+    <div class="kpi-card__value" style="font-size:1.9rem;">{{ kpis.employees or 0 }}</div>
+    <div class="kpi-card__sub">{{ kpis.records or 0 }} {{ tr("redova") }}</div>
+  </div>
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Ukupno neto') }}</div>
+    <div class="kpi-card__value" style="font-size:1.5rem;">{{ money(kpis.total_net) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('isplaćeno zaposlenima') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--red">
+    <div class="kpi-card__label">{{ tr('Ukupno bruto trošak') }}</div>
+    <div class="kpi-card__value" style="font-size:1.5rem;">{{ money(kpis.total_gross) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">{{ tr('sa porezima i doprinosima') }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-card__label">{{ tr('Razlika (porezi)') }}</div>
+    <div class="kpi-card__value text-negative" style="font-size:1.5rem;">
+      {% if kpis.total_gross and kpis.total_net %}
+        {{ money(kpis.total_gross - kpis.total_net) }}<span class="kpi-card__unit">RSD</span>
+      {% else %}—{% endif %}
+    </div>
+    <div class="kpi-card__sub">{{ tr('bruto − neto') }}</div>
+  </div>
+</div>
+
+{# ── Filters ───────────────────────────────────────────────────────── #}
+<form method="get">
+  <div class="filter-bar" style="margin-bottom:24px;">
+    <div class="form-group">
+      <label>{{ tr('Zaposleni') }}</label>
+      <select name="employee">
+        <option value="">{{ tr('Svi') }}</option>
+        {% for e in employees_list %}
+        <option value="{{ e }}" {{ 'selected' if filters.employee == e }}>{{ e }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Lokacija') }}</label>
+      <select name="venue">
+        <option value="">{{ tr('Sve') }}</option>
+        {% for v in venues %}
+        <option value="{{ v }}" {{ 'selected' if filters.venue == v }}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Tip') }}</label>
+      <select name="worker_type">
+        <option value="">{{ tr('Svi') }}</option>
+        {% for wt in worker_types %}
+        <option value="{{ wt }}" {{ 'selected' if filters.worker_type == wt }}>{{ wt }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Od') }}</label>
+      <input type="date" name="date_from" value="{{ filters.date_from }}">
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Do') }}</label>
+      <input type="date" name="date_to" value="{{ filters.date_to }}">
+    </div>
+    <button type="submit" class="btn btn-primary">{{ tr('Filtriraj') }}</button>
+    <a href="{{ url_for('wages.index') }}" class="btn btn-ghost">{{ tr('Resetuj') }}</a>
+  </div>
+</form>
+
+{# ── Monthly Summary ────────────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-header"><span class="card-title">{{ tr('Pregled po mesecima') }}</span></div>
+  <div class="table-wrap">
+    {% if monthly %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th data-sort="str">{{ tr('Mesec') }}</th>
+          <th data-sort="num">{{ tr('Zaposlenih') }}</th>
+          <th data-sort="num">{{ tr('Stavki') }}</th>
+          <th data-sort="num" class="text-right">{{ tr('Neto') }}</th>
+          <th data-sort="num" class="text-right">{{ tr('Bruto') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in monthly %}
+        <tr>
+          <td style="font-weight:600;">{{ m.month_label }}</td>
+          <td>{{ m.employee_count }}</td>
+          <td style="color:var(--ink-muted);">{{ m.row_count }}</td>
+          <td class="num" style="font-weight:600;">{{ money(m.total_net) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span></td>
+          <td class="num text-negative" style="font-weight:600;">{{ money(m.total_gross) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span></td>
+          <td>
+            <a href="{{ url_for('wages.index', expand=m.month_key, **filters) }}" class="btn btn-ghost btn-sm">
+              {% if expand_month == m.month_key %}{{ tr('Zatvori') }}{% else %}{{ tr('Detalji') }}{% endif %}
+            </a>
+          </td>
+        </tr>
+        
+        {# Expanded month detail #}
+        {% if expand_month == m.month_key %}
+        <tr>
+          <td colspan="6" style="padding:0;background:var(--canvas-warm);">
+
+            {# ── View toggle ── #}
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border);">
+              <span style="font-size:.75rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;margin-right:4px;">{{ tr('Prikaz:') }}</span>
+              <a href="{{ url_for('wages.index', expand=m.month_key, view_mode='daily', **filters) }}"
+                 class="btn btn-sm {% if view_mode != 'aggregated' %}btn-primary{% else %}btn-ghost{% endif %}"
+                 style="font-size:.78rem;padding:3px 10px;">{{ tr('Dnevni') }}</a>
+              <a href="{{ url_for('wages.index', expand=m.month_key, view_mode='aggregated', **filters) }}"
+                 class="btn btn-sm {% if view_mode == 'aggregated' %}btn-primary{% else %}btn-ghost{% endif %}"
+                 style="font-size:.78rem;padding:3px 10px;">{{ tr('Po zaposlenom') }}</a>
+            </div>
+
+            {% if view_mode == 'aggregated' %}
+            {# ── Aggregated: per-employee ── #}
+            <table class="data-table" style="font-size:.84rem;margin:0;">
+              <thead>
+                <tr style="background:var(--surface);">
+                  <th>{{ tr('Zaposleni') }}</th>
+                  <th>{{ tr('Tip') }}</th>
+                  <th data-sort="num">{{ tr('Stavki') }}</th>
+                  <th class="text-right" data-sort="num">{{ tr('Neto') }}</th>
+                  <th class="text-right" data-sort="num">{{ tr('Bruto') }}</th>
+                  <th>{{ tr('Stopa') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in aggregated_rows %}
+                <tr>
+                  <td style="font-weight:500;">{{ r.employee_name }}</td>
+                  <td class="text-muted">{{ r.worker_type or '—' }}</td>
+                  <td style="color:var(--ink-muted);">{{ r.stavki }}</td>
+                  <td class="num" style="font-weight:600;">{{ money(r.total_net) }} <span style="color:var(--ink-ghost);font-size:.72rem;">RSD</span></td>
+                  <td class="num text-negative" style="font-weight:600;">{{ money(r.total_gross) }} <span style="color:var(--ink-ghost);font-size:.72rem;">RSD</span></td>
+                  <td>
+                    <span class="badge {% if r.tax_bracket == '29' or r.tax_bracket == '29%' %}badge-green{% else %}badge-amber{% endif %}">
+                      {{ r.tax_bracket or '—' }}
+                    </span>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+              <tfoot>
+                <tr style="background:var(--canvas-warm);">
+                  <td colspan="3" style="padding:8px 14px;font-weight:600;padding-left:28px;">{{ tr('Ukupno') }} {{ m.month_label }} ({{ aggregated_rows | length }} {{ tr('zaposlenih') }})</td>
+                  <td class="num" style="padding:8px 14px;font-weight:700;">
+                    {{ money((aggregated_rows | sum(attribute='total_net')) or 0) }} RSD
+                  </td>
+                  <td class="num text-negative" style="padding:8px 14px;font-weight:700;">
+                    {{ money((aggregated_rows | sum(attribute='total_gross')) or 0) }} RSD
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+
+            {% else %}
+            {# ── Daily: default row-by-row ── #}
+            <table class="data-table" style="font-size:.84rem;margin:0;">
+              <thead>
+                <tr style="background:var(--surface);">
+                  <th>{{ tr('Datum') }}</th>
+                  <th>{{ tr('Zaposleni') }}</th>
+                  <th>{{ tr('Tip') }}</th>
+                  <th>{{ tr('Lokacija') }}</th>
+                  <th>{{ tr('Stopa') }}</th>
+                  <th class="text-right">{{ tr('Neto') }}</th>
+                  <th class="text-right">{{ tr('Bruto') }}</th>
+                  <th>{{ tr('Izvor') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in expanded_rows %}
+                <tr>
+                  <td style="white-space:nowrap;">{{ r.date }}</td>
+                  <td style="font-weight:500;">{{ r.employee_name }}</td>
+                  <td class="text-muted">{{ r.worker_type or '—' }}</td>
+                  <td class="text-muted">{{ r.venue or '—' }}</td>
+                  <td>
+                    <span class="badge {% if r.tax_bracket == '29%' %}badge-green{% else %}badge-amber{% endif %}">
+                      {{ r.tax_bracket or '—' }}
+                    </span>
+                  </td>
+                  <td class="num">{{ money(r.net_amount) }} <span style="color:var(--ink-ghost);">RSD</span></td>
+                  <td class="num text-negative">{{ money(r.gross_cost) }} <span style="color:var(--ink-ghost);">RSD</span></td>
+                  <td class="text-muted" style="font-size:.75rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ r.source_file }}">
+                    {{ r.source_file or '—' }}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+              <tfoot>
+                <tr style="background:var(--canvas-warm);">
+                  <td colspan="5" style="padding:8px 14px;font-weight:600;padding-left:28px;">{{ tr('Ukupno') }} {{ m.month_label }}</td>
+                  <td class="num" style="padding:8px 14px;font-weight:700;">
+                    {{ money((expanded_rows | sum(attribute='net_amount')) or 0) }} RSD
+                  </td>
+                  <td class="num text-negative" style="padding:8px 14px;font-weight:700;">
+                    {{ money((expanded_rows | sum(attribute='gross_cost')) or 0) }} RSD
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+            {% endif %}
+
+          </td>
+        </tr>
+        {% endif %}
+
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="background:var(--canvas-warm);">
+          <td colspan="3" style="font-weight:600;padding:10px 14px;">{{ tr('Ukupno') }}</td>
+          <td class="num" style="font-weight:700;padding:10px 14px;">{{ money(kpis.total_net) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span></td>
+          <td class="num text-negative" style="font-weight:700;padding:10px 14px;">{{ money(kpis.total_gross) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span></td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="8" cy="7" r="3"/><path d="M2 17c0-3.3 2.7-6 6-6h1m5 1v6m-2-2h4"/>
+      </svg>
+      <p>{{ tr('Nema podataka o zaradama za izabrane filtere.') }}</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endif %}{# /tab #}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Estimate gross for each employee's add form
+{% for emp in employees %}
+function estimateGross_{{ loop.index }}(netInput) {
+  const net = parseFloat(netInput.value) || 0;
+  const grossField = document.getElementById('gross_{{ loop.index }}');
+  if (grossField && !grossField.dataset.manuallySet) {
+    grossField.placeholder = '×1.76 ≈ ' + Math.round(net * 1.76).toLocaleString('sr-RS');
+  }
+}
+
+document.getElementById('gross_{{ loop.index }}')?.addEventListener('input', function() {
+  this.dataset.manuallySet = this.value ? '1' : '';
+});
+{% endfor %}
+
+// Estimate gross for new employee form
+function estimateGrossNew(netInput) {
+  const net = parseFloat(netInput.value) || 0;
+  const grossField = document.getElementById('gross-new');
+  if (grossField && !grossField.dataset.manuallySet) {
+    grossField.placeholder = '×1.76 ≈ ' + Math.round(net * 1.76).toLocaleString('sr-RS');
+  }
+}
+
+document.getElementById('gross-new')?.addEventListener('input', function() {
+  this.dataset.manuallySet = this.value ? '1' : '';
+});
+</script>
+{% endblock %}

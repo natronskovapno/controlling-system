@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Zarade — Preview') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != '' and val|float != 0 -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Pregled uvoza') }} — {{ source_file }}</h1>
+    <p class="page-subtitle">
+      Format <strong>{{ fmt }}</strong> {{ tr('detektovan') }} · {{ row_count }} {{ tr('redova pronađeno · Proverite pre upisivanja') }}
+    </p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('wages.upload') }}" class="btn btn-secondary btn-sm">{{ tr('← Otkaži') }}</a>
+  </div>
+</div>
+
+{# Summary bar #}
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px;">
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Redova') }}</div>
+    <div class="kpi-card__value" style="font-size:1.9rem;">{{ row_count }}</div>
+    <div class="kpi-card__sub">{{ tr('iz fajla') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Zaposlenih') }}</div>
+    <div class="kpi-card__value" style="font-size:1.9rem;">{{ rows | map(attribute='employee_name') | list | unique | list | length }}</div>
+    <div class="kpi-card__sub">{{ tr('jedinstvenih') }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-card__label">{{ tr('Ukupno neto') }}</div>
+    <div class="kpi-card__value" style="font-size:1.5rem;">
+      {{ money(rows | sum(attribute='net_amount')) }}<span class="kpi-card__unit">RSD</span>
+    </div>
+  </div>
+  <div class="kpi-card kpi-card--red">
+    <div class="kpi-card__label">{{ tr('Ukupno bruto') }}</div>
+    <div class="kpi-card__value" style="font-size:1.5rem;">
+      {{ money(rows | sum(attribute='gross_cost')) }}<span class="kpi-card__unit">RSD</span>
+    </div>
+  </div>
+</div>
+
+{# Warning #}
+<div class="flash flash--warning" style="margin-bottom:20px;">
+  {{ tr('⚠ Pažljivo pregledajte podatke pre potvrde. Duplikati će biti automatski preskočeni (na osnovu datum + ime + iznos + tip).') }}
+</div>
+
+{# Preview table #}
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-header">
+    <span class="card-title">{{ tr('Parsirani podaci') }}</span>
+    <span class="badge badge-amber">{{ row_count }} {{ tr("redova") }}</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table" style="font-size:.82rem;">
+      <thead>
+        <tr>
+          <th data-sort="date">{{ tr('Datum') }}</th>
+          <th data-sort="str">{{ tr('Zaposleni') }}</th>
+          <th data-sort="str">{{ tr('Tip') }}</th>
+          <th data-sort="str">{{ tr('Lokacija') }}</th>
+          <th>{{ tr('Poreski razred') }}</th>
+          <th data-sort="num" class="text-right">{{ tr('Neto') }}</th>
+          <th data-sort="num" class="text-right">{{ tr('Bruto trošak') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td style="white-space:nowrap;">{{ r.date }}</td>
+          <td style="font-weight:500;">{{ r.employee_name }}</td>
+          <td class="text-muted">{{ r.worker_type or '—' }}</td>
+          <td class="text-muted">{{ r.venue or '—' }}</td>
+          <td>
+            <span class="badge {% if r.tax_bracket == '29%' %}badge-green{% else %}badge-amber{% endif %}">
+              {{ r.tax_bracket }}
+            </span>
+          </td>
+          <td class="num">{{ money(r.net_amount) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span></td>
+          <td class="num text-negative">{{ money(r.gross_cost) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="background:var(--canvas-warm);">
+          <td colspan="5" style="font-weight:600;padding:10px 14px;">{{ tr('Ukupno') }}</td>
+          <td class="num" style="font-weight:700;padding:10px 14px;">
+            {{ money(rows | sum(attribute='net_amount')) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+          </td>
+          <td class="num text-negative" style="font-weight:700;padding:10px 14px;">
+            {{ money(rows | sum(attribute='gross_cost')) }} <span style="font-size:.72rem;color:var(--ink-ghost);">RSD</span>
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+{# Confirm form — passes rows as JSON #}
+<form method="post" action="{{ url_for('wages.commit') }}">
+  <input type="hidden" name="confirmed" value="1">
+  <div style="display:flex;gap:10px;align-items:center;">
+    <button type="submit" class="btn btn-primary"
+            data-confirm="Upisati {{ row_count }} redova u bazu? Ova akcija se ne može poništiti.">
+      {{ tr('✓ Potvrdi i upiši u bazu') }}
+    </button>
+    <a href="{{ url_for('wages.upload') }}" class="btn btn-ghost">{{ tr('Otkaži') }}</a>
+    <span class="text-muted" style="font-size:.78rem;margin-left:8px;">
+      {{ tr('Duplikati će biti automatski preskočeni.') }}
+    </span>
+  </div>
+</form>
+
+{% endblock %}

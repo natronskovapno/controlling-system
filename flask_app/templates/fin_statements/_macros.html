@@ -1,0 +1,10 @@
+{% macro money(val) -%}
+  {%- if val is not none and val|float|round(0) != 0 -%}{{ "{:,.0f}".format(val|float).replace(",",".") }}{%- else -%}—{%- endif -%}
+{%- endmacro %}
+{% macro check_badge(ok) -%}
+  {%- if ok -%}<span class="badge badge-green">OK</span>{%- else -%}<span class="badge badge-red">{{ tr('Greška') }}</span>{%- endif -%}
+{%- endmacro %}
+{% macro note(text, kind='info') -%}
+  {%- set c = {'info': 'blue', 'warning': 'accent', 'error': 'red', 'success': 'green'}[kind] -%}
+  <div style="padding:10px 16px;border-radius:var(--r-md);font-size:.84rem;margin-bottom:8px;border-left:3px solid var(--{{ c }});background:var(--{{ c }}-bg);color:var(--{{ c }});">{{ text }}</div>
+{%- endmacro %}

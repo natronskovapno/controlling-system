@@ -1,0 +1,15 @@
+# The dashboard itself needs only Flask. Everything below is imported lazily,
+# inside the function that uses it, so the application starts and every page
+# renders without them — but the file import and export routes fail at the
+# point of use, which is worse than failing at startup. Install all of it.
+flask>=3.0
+
+# Trial balance and payroll spreadsheets, and the financial statement export.
+openpyxl>=3.1
+
+# Bank statements, trial balances and sales invoices that arrive as PDFs.
+pdfplumber>=0.11
+pypdf>=5.0
+
+# The payment proposal, which is handed to the bank as a PDF.
+reportlab>=4.0

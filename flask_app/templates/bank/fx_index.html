@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Devizni izvodi') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != '' and val|float != 0 -%}
+    {{ "{:,.2f}".format(val|float).replace(",","X").replace(".",",").replace("X",".") }}
+  {%- elif val == 0 -%}0,00
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Devizni izvodi') }}</h1>
+    <p class="page-subtitle">{{ count }} {{ tr("transakcija — Demo Bank Fx Account Statement") }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('bank.index') }}" class="btn btn-secondary btn-sm">{{ tr("← Izvodi (RSD)") }}</a>
+    <a href="{{ url_for('bank.fx_upload') }}" class="btn btn-primary btn-sm">{{ tr('↑ Uvoz PDF izvoda') }}</a>
+  </div>
+</div>
+
+<form method="get">
+  <div class="filter-bar">
+    <div class="form-group">
+      <label>{{ tr('Racun') }}</label>
+      <select name="account">
+        <option value="">{{ tr('Svi') }}</option>
+        {% for a in accounts %}
+        <option value="{{ a }}" {{ 'selected' if filters.account == a }}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>{{ tr('Valuta') }}</label>
+      <select name="currency">
+        <option value="">{{ tr('Sve') }}</option>
+        {% for c in currencies %}
+        <option value="{{ c }}" {{ 'selected' if filters.currency == c }}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <div style="display:flex;gap:6px;">
+        <button type="submit" class="btn btn-primary btn-sm">{{ tr('Filtriraj') }}</button>
+        <a href="{{ url_for('bank.fx_index') }}" class="btn btn-ghost btn-sm">{{ tr('Reset') }}</a>
+      </div>
+    </div>
+  </div>
+</form>
+
+<div class="card" style="overflow-x:auto;">
+  <table class="data-table" style="min-width:1300px;">
+    <thead>
+      <tr>
+        <th>{{ tr('Broj izvoda') }}</th><th>{{ tr('Datum') }}</th><th>{{ tr('Racun') }}</th><th>{{ tr('Valuta') }}</th>
+        <th>{{ tr('Opis') }}</th><th>{{ tr('Duguje') }}</th><th>{{ tr('Potrazuje') }}</th><th>{{ tr('RSD protivvr.') }}</th>
+        <th>{{ tr('Kurs') }}</th><th>{{ tr('Nalog br.') }}</th><th>{{ tr('Predmet br.') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr style="border-left:3px solid {% if r.credit and r.credit != 0 %}var(--green){% elif r.debit and r.debit != 0 %}var(--red){% else %}transparent{% endif %};">
+        <td><a href="{{ url_for('bank.fx_detail', statement_id=r.statement_id) }}">{{ r.statement_number }}</a></td>
+        <td>{{ r.booking_date or r.statement_date }}</td>
+        <td>{{ r.account }}</td>
+        <td>{{ r.currency }}</td>
+        <td style="max-width:320px;white-space:normal;font-size:.82rem;">{{ r.description }}</td>
+        <td class="num" style="font-weight:600;{% if r.debit and r.debit != 0 %}color:var(--red);{% endif %}">
+          {% if r.debit and r.debit != 0 %}−{{ money(r.debit) }}{% else %}—{% endif %}
+        </td>
+        <td class="num" style="font-weight:600;{% if r.credit and r.credit != 0 %}color:var(--green);{% endif %}">
+          {% if r.credit and r.credit != 0 %}+{{ money(r.credit) }}{% else %}—{% endif %}
+        </td>
+        <td>{{ money(r.rsd_equivalent) }}</td>
+        <td>{{ r.kurs or '—' }}</td>
+        <td style="font-size:.75rem;">{{ r.nalog_br or '—' }}</td>
+        <td style="font-size:.75rem;">{{ r.predmet_br or '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="11" style="text-align:center;color:var(--ink-muted);">
+        {{ tr('Nema uvezenih deviznih izvoda.') }} <a href="{{ url_for('bank.fx_upload') }}">{{ tr("Uvezi PDF") }}</a>.
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

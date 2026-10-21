@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% from "fin_statements/_macros.html" import note %}
+{% block title %}{{ tr('Po periodima i mesecima') }}{% endblock %}
+{% block content %}
+<style>
+  .fs-table { font-size: .78rem; }
+  .fs-table td { padding-top: 4px; padding-bottom: 4px; white-space: nowrap; }
+  .fs-table tr.sub td { font-weight: 700; }
+  .fs-table tr.tot td { font-weight: 700; border-top: 2px solid var(--text); }
+  .fs-table tr.item td:first-child { padding-left: 24px; }
+  .fs-table .c-proj { background: var(--accent-bg); }
+  .fs-table .c-total { background: var(--canvas); font-weight: 600; }
+  .fs-table .fs-pct { color: var(--text-muted); font-size: .68rem; }
+  .fs-seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+  .fs-seg a, .fs-seg button { border: 0; padding: 5px 12px; background: var(--surface); cursor: pointer; font: inherit; font-size: .82rem; color: var(--text); text-decoration: none; }
+  .fs-seg .on { background: var(--text); color: var(--surface); font-weight: 600; }
+</style>
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Bilans uspeha po periodima i mesecima') }}</h1>
+    <p class="page-subtitle">{{ tr('Periodi = razlike između uzastopnih bruto bilansa · meseci = raspodela perioda · iznosi u') }} <span id="fs-unit">000 RSD</span></p>
+  </div>
+  <div class="page-header__actions" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    {% if d.years|length > 1 %}
+    <div class="fs-seg" role="group" aria-label="{{ tr('Godina') }}">
+      {% for y in d.years %}<a href="?godina={{ y }}&prikaz={{ view }}" class="{% if y == d.year %}on{% endif %}">{{ y }}</a>{% endfor %}
+    </div>
+    {% endif %}
+    <div class="fs-seg" role="group" aria-label="{{ tr('Prikaz') }}">
+      <a href="?godina={{ d.year }}&prikaz=periodi" class="{% if view == 'periodi' %}on{% endif %}">{{ tr('Periodi') }}</a>
+      <a href="?godina={{ d.year }}&prikaz=mesecno" class="{% if view == 'mesecno' %}on{% endif %}">{{ tr("Meseci") }}</a>
+    </div>
+    <div class="fs-seg" role="group" aria-label="{{ tr('Valuta') }}" id="fs-cur">
+      <button type="button" data-cur="RSD" class="on">RSD</button><button type="button" data-cur="EUR">EUR</button>
+    </div>
+    <label for="fs-rate" class="text-muted" style="font-size:.82rem;">{{ tr('Kurs EUR') }}</label>
+    <input id="fs-rate" type="number" step="0.0001" value="117.2" style="width:90px;height:32px;text-align:right;">
+  </div>
+</div>
+
+{% if not d.year %}
+  {{ note(tr('Nema uvezenih bruto bilansa.'), 'warning') }}
+{% else %}
+{% if view == 'mesecno' %}
+  {{ note('Mesečne vrednosti su procena: prihodi i nabavna vrednost/materijal raspoređeni su po mesečnom POS prometu, ostali troškovi ravnomerno unutar perioda između dva bilansa.' ~ ('' if d.has_profile else ' POS podaci za ovu godinu nisu dostupni — sve stavke su raspoređene ravnomerno.')) }}
+{% endif %}
+{% set cols = d.mcols if view == 'mesecno' else d.pcols %}
+{% set rows = d.mrows if view == 'mesecno' else d.prows %}
+<div class="card">
+  <div class="table-wrap">
+    <table class="data-table fs-table">
+      <thead><tr>
+        <th style="min-width:230px;">{{ tr('Bilans uspeha —') }} {{ d.year }}</th>
+        {% for c in cols %}
+          <th class="text-right {% if c.kind == 'proj' %}c-proj{% elif c.kind == 'total' %}c-total{% endif %}" style="min-width:{{ '78px' if view == 'mesecno' else '120px' }};">
+            {{ tr(c.title) }}<br><span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.66rem;">{{ tr(c.sub) }}</span>
+          </th>
+        {% endfor %}
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr class="{{ r.kind }}">
+          <td>{{ tr(r.label) }}</td>
+          {% for c in r.cells %}
+            {% set k = cols[loop.index0].kind %}
+            <td class="text-right {% if k == 'proj' %}c-proj{% elif k == 'total' %}c-total{% endif %}">
+              <span class="fs-amt" data-v="{{ c.v }}"></span>
+              {% if view == 'periodi' and c.pct is not none %}<br><span class="fs-pct">{{ "%.0f"|format(c.pct) }}%</span>{% endif %}
+            </td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<p class="text-muted" style="font-size:.78rem;margin-top:12px;">
+  {{ tr('Periodi posle poslednjeg bilansa su projekcija (YTD + isti meseci osnovne godine). Procene COGS i amortizacije su uključene u periode iz međubilansa. % = udeo u poslovnim prihodima.') }}
+</p>
+{% endif %}
+
+<script>
+(function () {
+  const rateEl = document.getElementById("fs-rate"), unitEl = document.getElementById("fs-unit");
+  const buttons = document.querySelectorAll("#fs-cur button");
+  let cur = "RSD";
+  try { cur = localStorage.getItem("fs_cur") || "RSD"; rateEl.value = localStorage.getItem("fs_rate") || rateEl.value; } catch (e) {}
+  function render() {
+    const rate = parseFloat(rateEl.value) || 117.2, eur = cur === "EUR";
+    const fmt = new Intl.NumberFormat("sr-RS", { minimumFractionDigits: eur ? 1 : 0, maximumFractionDigits: eur ? 1 : 0 });
+    document.querySelectorAll(".fs-amt").forEach(el => {
+      let v = parseFloat(el.dataset.v) / 1000; if (eur) v /= rate;
+      const txt = fmt.format(v); el.textContent = /^-0([,.]0)?$/.test(txt) ? txt.slice(1) : txt;
+    });
+    buttons.forEach(b => b.classList.toggle("on", b.dataset.cur === cur));
+    unitEl.textContent = eur ? "000 EUR" : "000 RSD";
+    try { localStorage.setItem("fs_cur", cur); localStorage.setItem("fs_rate", rateEl.value); } catch (e) {}
+  }
+  buttons.forEach(b => b.addEventListener("click", () => { cur = b.dataset.cur; render(); }));
+  rateEl.addEventListener("input", render);
+  render();
+})();
+</script>
+{% endblock %}

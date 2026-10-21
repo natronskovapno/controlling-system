@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+{% block title %}{{ tr('Analiza po tipu događaja') }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="page-header">
+        <h1>{{ tr('Analiza performansi po tipu događaja') }}</h1>
+        <p class="text-muted">{{ tr('Mesečni pregled prosečnih vrednosti po tipu događaja') }}</p>
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">{{ tr('Od datuma') }}</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ filters.date_from }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ tr('Do datuma') }}</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ filters.date_to }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">{{ tr('Lokal') }}</label>
+                    <select name="venue" class="form-select">
+                        <option value="all" {% if filters.venue == 'all' %}selected{% endif %}>{{ tr('Svi') }}</option>
+                        <option value="Garden" {% if filters.venue == 'Garden' %}selected{% endif %}>Garden</option>
+                        <option value="Corner" {% if filters.venue == 'Corner' %}selected{% endif %}>Corner</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">{{ tr('Min. broj događaja') }}</label>
+                    <input type="number" name="min_count" class="form-control" value="{{ filters.min_count }}" min="0">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">{{ tr('Primeni') }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Table: Event Counts -->
+    <div class="card mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">{{ tr('1. Broj događaja') }}</h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-hover mb-0">
+                <thead class="table-light sticky-top">
+                    <tr>
+                        <th>{{ tr('Mesec') }}</th>
+                        {% for et in event_types %}
+                        <th class="text-end">{{ et }}</th>
+                        {% endfor %}
+                        <th class="text-end fw-bold">{{ tr('UKUPNO') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for month in months %}
+                    <tr>
+                        <td>{{ month_label(month) }}</td>
+                        {% for et in event_types %}
+                        <td class="text-end">
+                            {% set val = pivots.event_count[month].get(et) %}
+                            {% if val %}
+                                <a href="{{ url_for('event_type_analysis.drill_down', month=month, event_type=et, venue=filters.venue) }}" 
+                                   class="text-decoration-none">
+                                    {{ val|int }}
+                                </a>
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="text-end fw-bold">{{ pivots.event_count[month]['_total']|int }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="table-secondary fw-bold">
+                        <td>{{ tr('UKUPNO') }}</td>
+                        {% for et in event_types %}
+                        <td class="text-end">{{ pivots.event_count['_grand_total'].get(et, 0)|int }}</td>
+                        {% endfor %}
+                        <td class="text-end">{{ pivots.event_count['_grand_total']['_total']|int }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Macro for metric tables -->
+    {% macro metric_table(title, pivot_key, format='currency', decimals=0) %}
+    <div class="card mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">{{ title }}</h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-hover mb-0">
+                <thead class="table-light sticky-top">
+                    <tr>
+                        <th>{{ tr('Mesec') }}</th>
+                        {% for et in event_types %}
+                        <th class="text-end">{{ et }}</th>
+                        {% endfor %}
+                        <th class="text-end fw-bold">{{ tr('UKUPNO') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for month in months %}
+                    <tr>
+                        <td>{{ month_label(month) }}</td>
+                        {% for et in event_types %}
+                        <td class="text-end">
+                            {% set val = pivots[pivot_key][month].get(et) %}
+                            {% if val is not none %}
+                                {% if format == 'currency' %}
+                                    {{ "{:,.{}f}".format(val, decimals) }}
+                                {% elif format == 'percent' %}
+                                    {{ "{:.1f}%".format(val) }}
+                                {% else %}
+                                    {{ "{:,.{}f}".format(val, decimals) }}
+                                {% endif %}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="text-end fw-bold">
+                            {% set val = pivots[pivot_key][month]['_total'] %}
+                            {% if val is not none %}
+                                {% if format == 'currency' %}
+                                    {{ "{:,.{}f}".format(val, decimals) }}
+                                {% elif format == 'percent' %}
+                                    {{ "{:.1f}%".format(val) }}
+                                {% else %}
+                                    {{ "{:,.{}f}".format(val, decimals) }}
+                                {% endif %}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="table-secondary fw-bold">
+                        <td>{{ tr('PROSEK') }}</td>
+                        {% for et in event_types %}
+                        <td class="text-end">
+                            {% set val = pivots[pivot_key]['_grand_total'].get(et) %}
+                            {% if val is not none %}
+                                {% if format == 'currency' %}
+                                    {{ "{:,.{}f}".format(val, decimals) }}
+                                {% elif format == 'percent' %}
+                                    {{ "{:.1f}%".format(val) }}
+                                {% else %}
+                                    {{ "{:,.{}f}".format(val, decimals) }}
+                                {% endif %}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="text-end">
+                            {% set val = pivots[pivot_key]['_grand_total']['_total'] %}
+                            {% if val is not none %}
+                                {% if format == 'currency' %}
+                                    {{ "{:,.{}f}".format(val, decimals) }}
+                                {% elif format == 'percent' %}
+                                    {{ "{:.1f}%".format(val) }}
+                                {% else %}
+                                    {{ "{:,.{}f}".format(val, decimals) }}
+                                {% endif %}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endmacro %}
+
+    <!-- Average Revenue (FIXED: was avg_sales, now avg_revenue) -->
+    {{ metric_table(tr('2. Prosečan prihod po događaju (ukupno, neto, RSD)'), 'avg_revenue', 'currency', 0) }}
+
+    <!-- Average COGS -->
+    {{ metric_table(tr('3. Prosečan nabavni trošak (COGS) po događaju (RSD)'), 'avg_cogs', 'currency', 0) }}
+
+    <!-- Average Wages -->
+    {{ metric_table(tr('4. Prosečne zarade konobara po događaju (RSD)'), 'avg_wages', 'currency', 0) }}
+
+    <!-- Average Laborers -->
+    {{ metric_table(tr('5. Prosečne zarade fizikalaca po događaju (RSD)'), 'avg_laborers', 'currency', 0) }}
+
+    <!-- Average Fixed Costs -->
+    {{ metric_table(tr('6. Prosečni fiksni troškovi po događaju (RSD)'), 'avg_fixed_costs', 'currency', 0) }}
+
+    <!-- Average Gross Profit -->
+    {{ metric_table(tr('7. Prosečna bruto dobit po događaju (RSD)'), 'avg_gross_profit', 'currency', 0) }}
+
+    <!-- Average Net Profit -->
+    {{ metric_table(tr('8. Prosečna neto dobit po događaju (RSD)'), 'avg_net_profit', 'currency', 0) }}
+
+    <!-- Total Net Profit -->
+    {{ metric_table(tr('9. Ukupna neto dobit (suma, RSD)'), 'total_net_profit', 'currency', 0) }}
+
+    <!-- COGS % -->
+    {{ metric_table(tr('10. COGS % od prodaje'), 'cogs_pct', 'percent') }}
+
+    <!-- Labor % -->
+    {{ metric_table(tr('11. Troškovi rada % od prodaje'), 'labor_pct', 'percent') }}
+
+    <!-- Gross Margin % -->
+    {{ metric_table(tr('12. Bruto marža % od prodaje'), 'gross_margin_pct', 'percent') }}
+
+</div>
+
+<style>
+.sticky-top {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: #f8f9fa !important;
+}
+
+.table-hover tbody tr:hover {
+    background-color: #f1f3f5;
+}
+
+.card {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.table td, .table th {
+    padding: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.table th:first-child,
+.table td:first-child {
+    position: sticky;
+    left: 0;
+    background: white;
+    z-index: 5;
+}
+
+.table thead th:first-child {
+    z-index: 15;
+}
+</style>
+{% endblock %}

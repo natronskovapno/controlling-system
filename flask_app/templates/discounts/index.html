@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Popusti') }}{% endblock %}
+
+{% block content %}
+
+{# ── Macro: bill table (must be defined before use) ─────────────────── #}
+{% macro render_bill_table(bill_list) %}
+<table class="data-table" style="font-size:.8rem;width:100%">
+  <thead>
+    <tr>
+      <th>{{ tr('Datum') }}</th>
+      <th>{{ tr('Vreme') }}</th>
+      <th>{{ tr('Lokal') }}</th>
+      <th style="text-align:right">{{ tr("Original (RSD)") }}</th>
+      <th style="text-align:right">{{ tr('Popust (RSD)') }}</th>
+      <th style="text-align:right">{{ tr('Plaćeno (RSD)') }}</th>
+      <th style="text-align:right">%</th>
+      <th>{{ tr('Konobar') }}</th>
+      <th>{{ tr('Sto') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for b in bill_list %}
+    <tr>
+      <td style="white-space:nowrap">{{ b.date }}</td>
+      <td style="white-space:nowrap;color:var(--ink-muted)">{{ (b.time_created or '')[:5] }}</td>
+      <td style="color:var(--ink-muted)">{{ b.venue or '—' }}</td>
+      <td style="text-align:right">{{ "{:,.0f}".format(b.amount_original or 0).replace(",",".") }}</td>
+      <td style="text-align:right;color:var(--red)">−{{ "{:,.0f}".format(b.total_discount or 0).replace(",",".") }}</td>
+      <td style="text-align:right;font-weight:600">{{ "{:,.0f}".format(b.amount_paid or 0).replace(",",".") }}</td>
+      <td style="text-align:right;color:var(--ink-muted)">{{ "%.0f"|format(b.discount_pct) }}%</td>
+      <td style="color:var(--ink-muted);font-size:.75rem">{{ b.user_full_name or '—' }}</td>
+      <td style="color:var(--ink-muted);font-size:.75rem">{{ b.table_name or '—' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+<div class="page-header">
+  <h1 class="page-title">{{ tr('Popusti') }}</h1>
+  <p class="page-sub">{{ tr('Računi sa 50% i 100% popustom · iz POS sistema') }}</p>
+</div>
+
+{# ── Filters ─────────────────────────────────────────────────────────── #}
+<form method="get" class="filter-bar" style="margin-bottom:24px;">
+  <div class="filter-row">
+    <div class="filter-group">
+      <label class="filter-label">{{ tr('Od') }}</label>
+      <input type="date" name="date_from" value="{{ filters.date_from }}" class="filter-input">
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">{{ tr('Do') }}</label>
+      <input type="date" name="date_to" value="{{ filters.date_to }}" class="filter-input">
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">{{ tr('Lokal') }}</label>
+      <select name="venue" class="filter-input">
+        <option value="">{{ tr('Svi lokali') }}</option>
+        {% for v in venues %}
+          <option value="{{ v }}" {% if filters.venue == v %}selected{% endif %}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">{{ tr('Klasa popusta') }}</label>
+      <select name="disc_class" class="filter-input">
+        <option value="">{{ tr('Sve klase') }}</option>
+        <option value="50%"    {% if filters.disc_class == '50%'    %}selected{% endif %}>50%</option>
+        <option value="100%"   {% if filters.disc_class == '100%'   %}selected{% endif %}>100%</option>
+        <option value="ostalo" {% if filters.disc_class == 'ostalo' %}selected{% endif %}>{{ tr('Ostalo') }}</option>
+      </select>
+    </div>
+    <div class="filter-group" style="align-self:flex-end">
+      <button type="submit" class="btn btn--primary">{{ tr('Primeni') }}</button>
+      <a href="{{ url_for('discounts.index') }}" class="btn btn--ghost" style="margin-left:6px">{{ tr('Resetuj') }}</a>
+    </div>
+  </div>
+</form>
+
+{# ── KPIs ─────────────────────────────────────────────────────────────── #}
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:28px;">
+
+  <div class="kpi-card" style="border-left:3px solid var(--red)">
+    <div class="kpi-label">{{ tr('Ukupno popustnih računa') }}</div>
+    <div class="kpi-value" style="color:var(--red)">{{ kpi.total_bills }}</div>
+    <div class="kpi-sub">{{ "{:,.0f}".format(kpi.total_discount).replace(",",".") }} {{ tr('RSD popusta ukupno') }}</div>
+  </div>
+
+  <div class="kpi-card" style="border-left:3px solid #e67e22">
+    <div class="kpi-label">{{ tr("Originalna vrednost") }}</div>
+    <div class="kpi-value">{{ "{:,.0f}".format(kpi.total_original).replace(",",".") }} <span style="font-size:.8rem;font-weight:400;color:var(--ink-muted)">RSD</span></div>
+    <div class="kpi-sub">{{ tr('pre primene popusta') }}</div>
+  </div>
+
+  <div class="kpi-card" style="border-left:3px solid #8e44ad">
+    <div class="kpi-label">{{ tr('Popust 50%') }}</div>
+    <div class="kpi-value" style="color:#8e44ad">{{ kpi.n_50 }} <span style="font-size:.8rem;font-weight:400;color:var(--ink-muted)">{{ tr('računa') }}</span></div>
+    <div class="kpi-sub">{{ "{:,.0f}".format(kpi.disc_50_amt).replace(",",".") }} {{ tr("RSD popusta") }}</div>
+  </div>
+
+  <div class="kpi-card" style="border-left:3px solid var(--red)">
+    <div class="kpi-label">{{ tr('Popust 100%') }}</div>
+    <div class="kpi-value" style="color:var(--red)">{{ kpi.n_100 }} <span style="font-size:.8rem;font-weight:400;color:var(--ink-muted)">{{ tr('računa') }}</span></div>
+    <div class="kpi-sub">{{ "{:,.0f}".format(kpi.disc_100_amt).replace(",",".") }} {{ tr("RSD popusta") }}</div>
+  </div>
+
+</div>
+
+</div>
+
+{# ── Monthly sections ─────────────────────────────────────────────────── #}
+{% if not monthly_rows %}
+  <div class="empty-state"><p>{{ tr('Nema popustnih računa za odabrane filtere.') }}</p></div>
+{% else %}
+  {% for mo in monthly_rows %}
+  <div class="card" style="margin-bottom:16px;">
+
+    <div style="display:flex;align-items:baseline;gap:16px;padding:14px 18px;
+                border-bottom:1px solid var(--border-soft);cursor:pointer"
+         onclick="toggleSection('mo-{{ mo.month }}', 'chv-{{ mo.month }}')">
+      <span style="font-size:1rem;font-weight:700">{{ mo.month_sr | capitalize }}</span>
+      <span style="font-size:.82rem;color:var(--ink-muted)">{{ mo.total_count }} {{ tr('računa') }}</span>
+      <span style="font-size:.82rem;color:var(--red)">−{{ "{:,.0f}".format(mo.total_discount).replace(",",".") }} RSD</span>
+      <span style="font-size:.82rem;color:var(--ink-muted)">{{ tr("od") }} {{ "{:,.0f}".format(mo.total_original).replace(",",".") }} RSD</span>
+      <span id="chv-{{ mo.month }}" style="margin-left:auto;font-size:.75rem;color:var(--ink-muted)">▼</span>
+    </div>
+
+    <div id="mo-{{ mo.month }}" style="padding:14px 18px;">
+
+      {% if mo.d50.count %}
+      <div style="border:1px solid #8e44ad33;border-radius:8px;margin-bottom:12px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:16px;padding:10px 14px;
+                    background:#8e44ad08;cursor:pointer"
+             onclick="toggleSection('bills-{{ mo.month }}-50', 'chv-{{ mo.month }}-50')">
+          <span style="font-size:.85rem;font-weight:700;color:#8e44ad;min-width:90px">{{ tr('Popust 50%') }}</span>
+          <span style="font-size:.82rem">{{ mo.d50.count }} {{ tr('računa') }}</span>
+          <span style="font-size:.82rem;color:var(--ink-muted)">{{ tr("Original:") }} {{ "{:,.0f}".format(mo.d50.original).replace(",",".") }} RSD</span>
+          <span style="font-size:.82rem;color:#8e44ad">{{ tr('Popust: −') }}{{ "{:,.0f}".format(mo.d50.discount).replace(",",".") }} RSD</span>
+          <span id="chv-{{ mo.month }}-50" style="margin-left:auto;font-size:.72rem;color:var(--ink-muted)">{{ tr('▼ razvij') }}</span>
+        </div>
+        <div id="bills-{{ mo.month }}-50" style="display:none;overflow-x:auto">
+          {{ render_bill_table(mo.bills_50) }}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if mo.d100.count %}
+      <div style="border:1px solid #c0392b33;border-radius:8px;margin-bottom:12px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:16px;padding:10px 14px;
+                    background:#c0392b08;cursor:pointer"
+             onclick="toggleSection('bills-{{ mo.month }}-100', 'chv-{{ mo.month }}-100')">
+          <span style="font-size:.85rem;font-weight:700;color:var(--red);min-width:90px">{{ tr('Popust 100%') }}</span>
+          <span style="font-size:.82rem">{{ mo.d100.count }} {{ tr('računa') }}</span>
+          <span style="font-size:.82rem;color:var(--ink-muted)">{{ tr("Original:") }} {{ "{:,.0f}".format(mo.d100.original).replace(",",".") }} RSD</span>
+          <span style="font-size:.82rem;color:var(--red)">{{ tr('Popust: −') }}{{ "{:,.0f}".format(mo.d100.discount).replace(",",".") }} RSD</span>
+          <span id="chv-{{ mo.month }}-100" style="margin-left:auto;font-size:.72rem;color:var(--ink-muted)">{{ tr('▼ razvij') }}</span>
+        </div>
+        <div id="bills-{{ mo.month }}-100" style="display:none;overflow-x:auto">
+          {{ render_bill_table(mo.bills_100) }}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if mo.dost.count %}
+      <div style="border:1px solid var(--border-soft);border-radius:8px;margin-bottom:12px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:16px;padding:10px 14px;
+                    background:var(--canvas-warm);cursor:pointer"
+             onclick="toggleSection('bills-{{ mo.month }}-ost', 'chv-{{ mo.month }}-ost')">
+          <span style="font-size:.85rem;font-weight:700;color:var(--ink-muted);min-width:90px">{{ tr('Ostalo') }}</span>
+          <span style="font-size:.82rem">{{ mo.dost.count }} {{ tr('računa') }}</span>
+          <span style="font-size:.82rem;color:var(--ink-muted)">{{ tr("Original:") }} {{ "{:,.0f}".format(mo.dost.original).replace(",",".") }} RSD</span>
+          <span style="font-size:.82rem;color:var(--ink-muted)">{{ tr('Popust: −') }}{{ "{:,.0f}".format(mo.dost.discount).replace(",",".") }} RSD</span>
+          <span id="chv-{{ mo.month }}-ost" style="margin-left:auto;font-size:.72rem;color:var(--ink-muted)">{{ tr('▼ razvij') }}</span>
+        </div>
+        <div id="bills-{{ mo.month }}-ost" style="display:none;overflow-x:auto">
+          {{ render_bill_table(mo.bills_ost) }}
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleSection(id, chvId) {
+  const el  = document.getElementById(id);
+  const chv = chvId ? document.getElementById(chvId) : null;
+  if (!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  if (chv) chv.textContent = open ? '▶ razvij' : '▼ skupi';
+}
+</script>
+{% endblock %}

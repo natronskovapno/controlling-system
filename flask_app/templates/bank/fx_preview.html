@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Pregled — devizni izvodi') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != '' and val|float != 0 -%}
+    {{ "{:,.2f}".format(val|float).replace(",","X").replace(".",",").replace("X",".") }}
+  {%- elif val == 0 -%}0,00
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Pregled parsiranih izvoda') }}</h1>
+    <p class="page-subtitle">{{ count }} {{ tr("izvod(a),") }} {{ total_tx }} {{ tr("transakcija — proverite pre upisa") }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('bank.fx_upload') }}" class="btn btn-secondary btn-sm">{{ tr("← Ucitaj ponovo") }}</a>
+  </div>
+</div>
+
+{% for r in statements %}
+{% for b in r.blocks %}
+<div class="card" style="margin-bottom:16px;border-left:3px solid var(--accent);">
+  <div class="card-body" style="padding:16px 20px;">
+
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
+      <div>
+        <div style="font-size:1rem;font-weight:700;">
+          {{ tr('Izvod') }} {{ r.statement_number or '—' }} · {{ b.currency }} {{ tr("· racun") }} {{ r.account or '—' }}
+        </div>
+        <div style="font-size:.8rem;color:var(--ink-muted);">{{ r.source_file }}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:.78rem;color:var(--ink-muted);">{{ tr("Podracun") }} {{ b.subaccount_code }} — {{ b.subaccount_name }}</div>
+        <div style="font-size:.88rem;">{{ tr("Datum:") }} {{ r.statement_date or '—' }}</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:14px;">
+      <div>
+        <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;color:var(--ink-muted);">{{ tr('Pocetno stanje') }}</div>
+        <div style="font-size:.9rem;font-weight:600;">{{ money(b.previous_balance) }} {{ b.currency }}</div>
+      </div>
+      <div>
+        <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;color:var(--ink-muted);">{{ tr('Novo stanje') }}</div>
+        <div style="font-size:.9rem;font-weight:600;">{{ money(b.new_balance) }} {{ b.currency }}</div>
+      </div>
+      <div>
+        <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;color:var(--ink-muted);">IBAN</div>
+        <div style="font-size:.85rem;">{{ r.iban or '—' }}</div>
+      </div>
+    </div>
+
+    <table class="data-table" style="font-size:.8rem;">
+      <thead>
+        <tr>
+          <th>#</th><th>{{ tr('Opis') }}</th><th>{{ tr('Duguje') }}</th><th>{{ tr('Potrazuje') }}</th><th>{{ tr('RSD protivvr.') }}</th>
+          <th>{{ tr('Datum') }}</th><th>{{ tr('Kurs') }}</th><th>{{ tr('Nalog br.') }}</th><th>{{ tr('Predmet br.') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in b.transactions %}
+        <tr {% if t._unparsed %}style="background:#fff3cd;"{% endif %}>
+          <td>{{ t.line_no }}</td>
+          <td style="max-width:280px;white-space:normal;">{{ t.description }}</td>
+          <td>{{ money(t.debit) }}</td>
+          <td>{{ money(t.credit) }}</td>
+          <td>{{ money(t.rsd_equiv) }}</td>
+          <td>{{ t.booking_date or '—' }}</td>
+          <td>{{ t.kurs or '—' }}</td>
+          <td style="font-size:.72rem;">{{ t.nalog_br or '—' }}</td>
+          <td style="font-size:.72rem;">{{ t.predmet_br or '—' }}</td>
+        </tr>
+        {% if t._unparsed %}
+        <tr><td></td><td colspan="8" style="color:#c0392b;font-size:.72rem;">
+          {{ tr('⚠ Nije uspešno raščlanjeno — proverite ručno pre potvrde.') }}
+        </td></tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+
+  </div>
+</div>
+{% endfor %}
+{% endfor %}
+
+<div style="display:flex;gap:12px;align-items:center;margin-top:8px;
+            padding:16px 20px;background:var(--surface);border-radius:var(--r-md);
+            border:1px solid var(--border-soft);">
+  <div style="flex:1;font-size:.84rem;color:var(--ink-muted);">
+    {{ tr('Kliknite') }} <strong>{{ tr('Upiši u sistem') }}</strong>{{ tr("da dodate ove izvode i transakcije u bazu. Duplikati (isti račun+valuta+broj izvoda) se preskaču automatski.") }}</div>
+  <a href="{{ url_for('bank.fx_upload') }}" class="btn btn-ghost btn-sm">{{ tr('Odustani') }}</a>
+  <form method="post" action="{{ url_for('bank.fx_commit') }}" style="display:inline;">
+    <button type="submit" class="btn btn-primary">{{ tr('Upiši') }} {{ count }} {{ tr("izvod(a) u sistem") }}</button>
+  </form>
+</div>
+
+{% endblock %}

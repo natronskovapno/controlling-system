@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ tr("Cash Position —") }} {{ summary.today }}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', Arial, Helvetica, sans-serif;
+      font-size: 13px;
+      color: #1a1814;
+      background: #fff;
+      padding: 32px 40px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .report-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 28px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid #1a1814;
+    }
+    .report-title { font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+    .report-sub   { font-size: 12px; color: #7a7268; margin-top: 3px; }
+    .report-date  { font-size: 12px; color: #7a7268; text-align: right; }
+
+    /* KPI row */
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .kpi-box {
+      border: 1px solid #d6d0c8;
+      border-radius: 8px;
+      padding: 14px 16px;
+      background: #faf9f7;
+    }
+    .kpi-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: #7a7268;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .kpi-value       { font-size: 18px; font-weight: 700; }
+    .kpi-value.green { color: #2d7a4f; }
+    .kpi-value.red   { color: #b53a2e; }
+    .kpi-value.blue  { color: #2a5fa8; }
+    .kpi-sub         { font-size: 11px; color: #7a7268; margin-top: 3px; }
+
+    /* Section heading */
+    h2 {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: #1a1814;
+      margin: 24px 0 10px;
+      padding-bottom: 5px;
+      border-bottom: 2px solid #1a1814;
+    }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+    thead th {
+      padding: 7px 10px;
+      text-align: left;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: #7a7268;
+      background: #f5f2ed;
+      border-bottom: 1px solid #d6d0c8;
+    }
+    tbody td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #ede9e2;
+      color: #3d3830;
+      vertical-align: middle;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tfoot td {
+      padding: 9px 10px;
+      font-weight: 700;
+      border-top: 2px solid #1a1814;
+      background: #f5f2ed;
+    }
+
+    .text-right  { text-align: right; }
+    .text-muted  { color: #7a7268; }
+    .font-mono   { font-family: 'Courier New', monospace; font-size: .85em; }
+    .text-green  { color: #2d7a4f; }
+    .text-red    { color: #b53a2e; }
+    .text-blue   { color: #2a5fa8; }
+    .font-bold   { font-weight: 700; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 99px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .badge-red    { background: #fdecea; color: #b53a2e; }
+    .badge-amber  { background: #faf5e4; color: #c4952a; }
+    .badge-blue   { background: #eaf0fb; color: #2a5fa8; }
+
+    .overdue { color: #b53a2e; font-weight: 700; }
+
+    /* Summary box */
+    .summary-box {
+      border: 1px solid #d6d0c8;
+      border-radius: 8px;
+      padding: 16px 20px;
+      background: #faf9f7;
+      max-width: 340px;
+      margin-bottom: 24px;
+    }
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #ede9e2;
+      font-size: 13px;
+    }
+    .summary-row:last-child { border-bottom: none; }
+    .summary-row.total {
+      border-top: 2px solid #1a1814;
+      border-bottom: none;
+      padding-top: 10px;
+      margin-top: 4px;
+      font-size: 14px;
+    }
+
+    /* Footer */
+    .report-footer {
+      margin-top: 40px;
+      padding-top: 12px;
+      border-top: 1px solid #d6d0c8;
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #b8b0a4;
+    }
+
+    /* Print button (hidden on print) */
+    .print-btn {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 8px 18px;
+      background: #c4952a;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,.15);
+    }
+    .print-btn:hover { background: #a87c22; }
+
+    @media print {
+      .print-btn { display: none; }
+      body { padding: 16px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<button class="print-btn" onclick="window.print()">{{ tr('🖨 Štampaj / Sačuvaj PDF') }}</button>
+
+{# Header #}
+<div class="report-header">
+  <div>
+    <div class="report-title">{{ tr('Garden Stage — Cash Position') }}</div>
+    <div class="report-sub">{{ tr('Pregled likvidnosti · Interni dokument') }}</div>
+  </div>
+  <div class="report-date">
+    {{ tr("Generisano:") }} {{ summary.today }}<br>
+    <span style="font-size:11px;">{{ tr('Svi iznosi u RSD') }}</span>
+  </div>
+</div>
+
+{# KPI Row #}
+<div class="kpi-row">
+  <div class="kpi-box">
+    <div class="kpi-label">{{ tr('Neto pozicija') }}</div>
+    <div class="kpi-value {% if summary.net_position >= 0 %}green{% else %}red{% endif %}">
+      {{ "{:,.0f}".format(summary.net_position|int).replace(",",".") }}
+    </div>
+    <div class="kpi-sub">{{ tr('salda minus obaveze') }}</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">{{ tr('Salda na računima') }}</div>
+    <div class="kpi-value">{{ "{:,.0f}".format(summary.total_balance|int).replace(",",".") }}</div>
+    <div class="kpi-sub">{{ balances|length }} {{ tr('račun(a)') }}</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">{{ tr('Obaveze') }}</div>
+    <div class="kpi-value red">{{ "{:,.0f}".format(summary.total_payables|int).replace(",",".") }}</div>
+    <div class="kpi-sub">
+      {% if summary.overdue_count > 0 %}⚠ {{ summary.overdue_count }} {{ tr("dospelo") }}{% else %}{{ payables|length }} {{ tr("faktura") }}{% endif %}
+    </div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">{{ tr('Potraživanja') }}</div>
+    <div class="kpi-value blue">{{ "{:,.0f}".format(summary.total_receivables|int).replace(",",".") }}</div>
+    <div class="kpi-sub">{{ receivables|length }} {{ tr("faktura") }}</div>
+  </div>
+</div>
+
+{# Summary calculation #}
+<div class="summary-box">
+  <div class="summary-row">
+    <span class="text-muted">{{ tr('Salda na računima') }}</span>
+    <span class="font-bold">{{ "{:,.0f}".format(summary.total_balance|int).replace(",",".") }} RSD</span>
+  </div>
+  <div class="summary-row">
+    <span class="text-muted">{{ tr('− Obaveze') }}</span>
+    <span class="text-red font-bold">{{ "{:,.0f}".format(summary.total_payables|int).replace(",",".") }} RSD</span>
+  </div>
+  <div class="summary-row total">
+    <span class="font-bold">{{ tr('= Neto pozicija') }}</span>
+    <span class="font-bold {% if summary.net_position >= 0 %}text-green{% else %}text-red{% endif %}">
+      {{ "{:,.0f}".format(summary.net_position|int).replace(",",".") }} RSD
+    </span>
+  </div>
+  <div class="summary-row" style="border-top:none;padding-top:8px;margin-top:4px;">
+    <span class="text-muted">{{ tr('+ Potraživanja') }}</span>
+    <span class="text-blue font-bold">{{ "{:,.0f}".format(summary.total_receivables|int).replace(",",".") }} RSD</span>
+  </div>
+  {% if summary.overdue_amount > 0 %}
+  <div class="summary-row" style="border-top:none;">
+    <span class="text-red" style="font-size:11px;">{{ tr('⚠ Dospele obaveze') }}</span>
+    <span class="text-red font-bold" style="font-size:11px;">{{ "{:,.0f}".format(summary.overdue_amount|int).replace(",",".") }} RSD</span>
+  </div>
+  {% endif %}
+</div>
+
+{# Account Balances #}
+<h2>{{ tr('Salda po računima') }}</h2>
+{% if balances %}
+<table>
+  <thead>
+    <tr>
+      <th>{{ tr('Račun') }}</th>
+      <th>{{ tr('Poslednja transakcija') }}</th>
+      <th class="text-right">{{ tr('Ukupni priliv') }}</th>
+      <th class="text-right">{{ tr('Ukupni odliv') }}</th>
+      <th class="text-right">{{ tr('Neto saldo') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for b in balances %}
+    <tr>
+      <td>
+        <span class="font-bold">{{ b.label }}</span><br>
+        <span class="font-mono text-muted">{{ b.account }}</span>
+      </td>
+      <td class="text-muted">{{ b.last_date or '—' }}</td>
+      <td class="text-right text-green font-bold">{{ "{:,.0f}".format((b.total_in or 0)|int).replace(",",".") }}</td>
+      <td class="text-right text-red font-bold">{{ "{:,.0f}".format((b.total_out or 0)|int).replace(",",".") }}</td>
+      <td class="text-right font-bold {% if (b.balance or 0) >= 0 %}text-green{% else %}text-red{% endif %}">
+        {{ "{:,.0f}".format((b.balance or 0)|int).replace(",",".") }}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="4">{{ tr('Ukupno') }}</td>
+      <td class="text-right {% if summary.total_balance >= 0 %}text-green{% else %}text-red{% endif %}">
+        {{ "{:,.0f}".format(summary.total_balance|int).replace(",",".") }}
+      </td>
+    </tr>
+  </tfoot>
+</table>
+{% endif %}
+
+{# Payables #}
+<h2>{{ tr('Neizmirene obaveze —') }} {{ payables|length }} {{ tr("faktura") }}</h2>
+{% if payables %}
+<table>
+  <thead>
+    <tr>
+      <th>{{ tr('Dobavljač') }}</th>
+      <th>{{ tr('Izdavanje') }}</th>
+      <th>{{ tr('Rok plaćanja') }}</th>
+      <th>{{ tr('Status') }}</th>
+      <th class="text-right">{{ tr('Preostalo (RSD)') }}</th>
+      <th class="text-right">{{ tr('Zakašnjenje') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in payables %}
+    {% set overdue = (p.days_overdue or 0) %}
+    <tr>
+      <td>{{ p.supplier_name or '—' }}</td>
+      <td class="text-muted">{{ p.date_issued or '—' }}</td>
+      <td {% if overdue > 0 %}class="text-red"{% else %}class="text-muted"{% endif %}>{{ p.due_date or '—' }}</td>
+      <td><span class="badge {% if p.payment_status == 'Partial' %}badge-amber{% else %}badge-red{% endif %}">{{ p.payment_status }}</span></td>
+      <td class="text-right font-bold">{{ "{:,.0f}".format(p.outstanding|int).replace(",",".") }}</td>
+      <td class="text-right {% if overdue > 0 %}overdue{% else %}text-muted{% endif %}">
+        {% if overdue > 0 %}+{{ overdue }}d{% else %}—{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="4">{{ tr('Ukupno obaveze') }}</td>
+      <td class="text-right text-red">{{ "{:,.0f}".format(summary.total_payables|int).replace(",",".") }}</td>
+      <td></td>
+    </tr>
+  </tfoot>
+</table>
+{% else %}
+<p class="text-muted" style="padding:12px 0;font-size:12px;">{{ tr('Nema neizmirenih obaveza. ✓') }}</p>
+{% endif %}
+
+{# Receivables #}
+<h2>{{ tr('Neizmirena potraživanja —') }} {{ receivables|length }} {{ tr("faktura") }}</h2>
+{% if receivables %}
+<table>
+  <thead>
+    <tr>
+      <th>{{ tr('Klijent') }}</th>
+      <th>{{ tr('Izdavanje') }}</th>
+      <th>{{ tr('Rok plaćanja') }}</th>
+      <th>{{ tr('Status') }}</th>
+      <th class="text-right">{{ tr('Preostalo (RSD)') }}</th>
+      <th class="text-right">{{ tr('Zakašnjenje') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in receivables %}
+    {% set overdue = (r.days_overdue or 0) %}
+    <tr>
+      <td>{{ r.buyer_name or '—' }}</td>
+      <td class="text-muted">{{ r.date_issued or '—' }}</td>
+      <td {% if overdue > 0 %}class="text-red"{% else %}class="text-muted"{% endif %}>{{ r.due_date or '—' }}</td>
+      <td><span class="badge badge-blue">{{ r.payment_status }}</span></td>
+      <td class="text-right font-bold">{{ "{:,.0f}".format(r.outstanding|int).replace(",",".") }}</td>
+      <td class="text-right {% if overdue > 0 %}overdue{% else %}text-muted{% endif %}">
+        {% if overdue > 0 %}+{{ overdue }}d{% else %}—{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="4">{{ tr('Ukupno potraživanja') }}</td>
+      <td class="text-right text-blue">{{ "{:,.0f}".format(summary.total_receivables|int).replace(",",".") }}</td>
+      <td></td>
+    </tr>
+  </tfoot>
+</table>
+{% else %}
+<p class="text-muted" style="padding:12px 0;font-size:12px;">{{ tr('Nema neizmirenih potraživanja.') }}</p>
+{% endif %}
+
+{# Inflows #}
+<h2 style="color:#2d7a4f;">{{ tr("↓ Prilivi —") }} {{ inflows|length }} {{ tr("kontrastrana") }}
+  {% if date_from or date_to %}
+    <span style="font-weight:400;font-size:11px;color:#7a7268;margin-left:8px;">
+      {{ date_from or '…' }} → {{ date_to or '…' }}
+    </span>
+  {% endif %}
+</h2>
+{% if inflows %}
+<table>
+  <thead>
+    <tr>
+      <th>{{ tr('Kontrastrana') }}</th>
+      <th class="text-right">{{ tr('Broj transakcija') }}</th>
+      <th>{{ tr('Prva') }}</th>
+      <th>{{ tr('Poslednja') }}</th>
+      <th class="text-right">{{ tr('Ukupno (RSD)') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in inflows %}
+    <tr>
+      <td>{{ r.counterparty }}</td>
+      <td class="text-right text-muted">{{ r.tx_count }}</td>
+      <td class="text-muted">{{ r.first_date }}</td>
+      <td class="text-muted">{{ r.last_date }}</td>
+      <td class="text-right text-green font-bold">+{{ "{:,.0f}".format(r.total_amount|int).replace(",",".") }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="4">{{ tr('Ukupno prilivi') }}</td>
+      <td class="text-right text-green">+{{ "{:,.0f}".format(inflow_total|int).replace(",",".") }}</td>
+    </tr>
+  </tfoot>
+</table>
+{% else %}
+<p class="text-muted" style="padding:12px 0;font-size:12px;">{{ tr('Nema prihoda za izabrani period.') }}</p>
+{% endif %}
+
+{# Outflows #}
+<h2 style="color:#b53a2e;">{{ tr("↑ Odlivi —") }} {{ outflows|length }} {{ tr("kontrastrana") }}
+  {% if date_from or date_to %}
+    <span style="font-weight:400;font-size:11px;color:#7a7268;margin-left:8px;">
+      {{ date_from or '…' }} → {{ date_to or '…' }}
+    </span>
+  {% endif %}
+</h2>
+{% if outflows %}
+<table>
+  <thead>
+    <tr>
+      <th>{{ tr('Kontrastrana') }}</th>
+      <th class="text-right">{{ tr('Broj transakcija') }}</th>
+      <th>{{ tr('Prva') }}</th>
+      <th>{{ tr('Poslednja') }}</th>
+      <th class="text-right">{{ tr('Ukupno (RSD)') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in outflows %}
+    <tr>
+      <td>{{ r.counterparty }}</td>
+      <td class="text-right text-muted">{{ r.tx_count }}</td>
+      <td class="text-muted">{{ r.first_date }}</td>
+      <td class="text-muted">{{ r.last_date }}</td>
+      <td class="text-right text-red font-bold">−{{ "{:,.0f}".format(r.total_amount|int).replace(",",".") }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="4">{{ tr('Ukupno odlivi') }}</td>
+      <td class="text-right text-red">−{{ "{:,.0f}".format(outflow_total|int).replace(",",".") }}</td>
+    </tr>
+  </tfoot>
+</table>
+{% else %}
+<p class="text-muted" style="padding:12px 0;font-size:12px;">{{ tr('Nema odliva za izabrani period.') }}</p>
+{% endif %}
+
+<div class="report-footer">
+  <span>{{ tr('Garden Stage — Interni dokument — Poverljivo') }}</span>
+  <span>{{ summary.today }}</span>
+</div>
+
+</body>
+</html>

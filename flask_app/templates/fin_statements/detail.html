@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "fin_statements/_macros.html" import money, check_badge, note %}
+{% block title %}{{ tr('Bruto bilans') }} {{ s.period_to }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Bruto bilans') }} {{ s.period_from }} → {{ s.period_to }}</h1>
+    <p class="page-subtitle">{{ s.company or '—' }} · {{ s.fmt }} · {{ s.source_file }} {{ tr("· uvezeno") }} {{ s.imported_at }}
+      {% if s.is_closing %}· <span class="badge badge-blue">{{ tr('Zaključni') }}</span>{% endif %}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('fin_statements.snapshots') }}" class="btn btn-secondary btn-sm">{{ tr('← Svi bilansi') }}</a>
+  </div>
+</div>
+
+{% for w in s.warnings %}{% if w is string %}{{ note(tr(w)) }}{% else %}{{ note(tr(w[0], **w[1])) }}{% endif %}{% endfor %}
+
+<div class="section-grid" style="grid-template-columns:1fr 1fr;gap:24px;align-items:start;margin:16px 0 24px;">
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Kontrole') }}</span>{{ check_badge(s.checks_ok) }}</div>
+    <div class="table-wrap">
+      <table class="data-table" style="font-size:.82rem;">
+        <tbody>{% for c in s.checks %}<tr><td>{{ c.name }}</td><td>{{ check_badge(c.ok) }}</td><td class="text-muted">{{ c.detail }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Po klasama') }}</span></div>
+    <div class="table-wrap">
+      <table class="data-table" style="font-size:.82rem;">
+        <thead><tr><th>{{ tr('Klasa') }}</th><th class="text-right">{{ tr('Promet D') }}</th><th class="text-right">{{ tr('Promet P') }}</th><th class="text-right">{{ tr('Saldo D') }}</th><th class="text-right">{{ tr('Saldo P') }}</th></tr></thead>
+        <tbody>{% for c in classes %}
+          <tr><td><a href="?klasa={{ c.klasa }}">{{ c.klasa }}</a></td>
+            <td class="text-right">{{ money(c.tp_d) }}</td><td class="text-right">{{ money(c.tp_p) }}</td>
+            <td class="text-right">{{ money(c.saldo_d) }}</td><td class="text-right">{{ money(c.saldo_p) }}</td></tr>
+        {% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">{{ tr('Analitička konta') }}{% if klasa %} {{ tr('— klasa') }} {{ klasa }}{% endif %}</span>
+    <div style="display:flex;gap:4px;">
+      <a href="?" class="btn btn-sm {% if not klasa %}btn-primary{% else %}btn-secondary{% endif %}">{{ tr('Sve') }}</a>
+      {% for c in classes %}<a href="?klasa={{ c.klasa }}" class="btn btn-sm {% if klasa == c.klasa %}btn-primary{% else %}btn-secondary{% endif %}">{{ c.klasa }}</a>{% endfor %}
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table" style="font-size:.82rem;">
+      <thead><tr>
+        <th>{{ tr('Konto') }}</th><th>{{ tr('Naziv') }}</th><th class="text-right">{{ tr('Početno stanje') }}</th>
+        <th class="text-right">{{ tr('Promet D') }}</th><th class="text-right">{{ tr('Promet P') }}</th><th class="text-right">{{ tr('Saldo') }}</th>
+      </tr></thead>
+      <tbody>{% for l in lines %}
+        <tr>
+          <td>{{ l.konto }}</td><td>{{ l.naziv or '—' }}</td>
+          <td class="text-right">{{ money(l.ps_saldo) }}</td>
+          <td class="text-right">{{ money(l.tp_d) }}</td><td class="text-right">{{ money(l.tp_p) }}</td>
+          <td class="text-right"><strong>{{ money(l.saldo) }}</strong></td>
+        </tr>
+      {% endfor %}</tbody>
+    </table>
+  </div>
+  <div class="card-body text-muted" style="font-size:.78rem;">{{ tr('Saldo: pozitivan = duguje, negativan = potražuje.') }}</div>
+</div>
+{% endblock %}

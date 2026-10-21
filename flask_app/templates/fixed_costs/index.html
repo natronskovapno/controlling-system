@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Fiksni prihodi/troškovi') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != 0 -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% macro net_color(val) %}{{ 'var(--green)' if val >= 0 else 'var(--red)' }}{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Fiksni prihodi/troškovi') }}</h1>
+    <p class="page-subtitle">{{ year }} &nbsp;<span style="font-size:.75rem;color:var(--ink-muted);font-weight:400;">{{ tr('· Podaci od januara 2025.') }}</span></p>
+  </div>
+  <div class="page-header__actions">
+    <form method="get" style="display:flex;gap:6px;align-items:center;">
+      <select name="year" onchange="this.form.submit()"
+              style="padding:6px 10px;border-radius:var(--r-md);border:1px solid var(--border);font-size:.84rem;">
+        {% for y in years %}
+          <option value="{{ y }}" {{ 'selected' if y == year }}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <form method="post" action="{{ url_for('fixed_costs.sync_salaries') }}" style="display:inline;">
+      <button type="submit" class="btn btn-ghost btn-sm"
+              onclick="return confirm('Sinhronizovati plate stalnih zaposlenih sa fiksnim troškovima?')">
+        {{ tr('↻ Sinhronizuj plate') }}
+      </button>
+    </form>
+    <a href="{{ url_for('fixed_costs.tags') }}" class="btn btn-secondary btn-sm">{{ tr("Upravljaj tagovima") }}</a>
+    <a href="{{ url_for('fixed_costs.new_link', year=year) }}" class="btn btn-primary btn-sm">{{ tr('+ Ručni unos') }}</a>
+  </div>
+</div>
+
+{# ── KPI tiles ─────────────────────────────────────────────────────── #}
+<div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:24px;">
+
+  {# Operativni #}
+  {% set op = annual_sub['operativni'] %}
+  {% set op_net = op.income - op.expense %}
+  <div class="kpi-card {{ 'kpi-card--red' if op_net < 0 else 'kpi-card--green' }}">
+    <div class="kpi-card__label">{{ tr('Operativni (neto)') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ money(op_net) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub" style="font-size:.72rem;">{{ tr('Troškovi:') }} {{ money(op.expense) }}</div>
+  </div>
+
+  {# Parking #}
+  {% set pk = annual_sub['parking'] %}
+  <div class="kpi-card kpi-card--green">
+    <div class="kpi-card__label">{{ tr('Parking (prihodi)') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ money(pk.income - pk.expense) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub" style="font-size:.72rem;">{{ tr('Troškovi:') }} {{ money(pk.expense) }}</div>
+  </div>
+
+  {# Podnajam #}
+  {% set pd = annual_sub['podnajam'] %}
+  <div class="kpi-card kpi-card--green">
+    <div class="kpi-card__label">{{ tr('Podnajam (prihodi)') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ money(pd.income - pd.expense) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub" style="font-size:.72rem;">{{ tr('Troškovi:') }} {{ money(pd.expense) }}</div>
+  </div>
+
+  {# Sponzori #}
+  {% set sp = annual_sub['sponzori'] %}
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Sponzori') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ money(sp.income - sp.expense) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">&nbsp;</div>
+  </div>
+
+  {# Ostalo #}
+  {% set ot = annual_sub['ostalo'] %}
+  <div class="kpi-card">
+    <div class="kpi-card__label">{{ tr('Ostalo') }}</div>
+    <div class="kpi-card__value" style="font-size:1.3rem;">{{ money(ot.income - ot.expense) }}<span class="kpi-card__unit">RSD</span></div>
+    <div class="kpi-card__sub">&nbsp;</div>
+  </div>
+
+</div>
+
+{# ── Submodule tabs ───────────────────────────────────────────────── #}
+<div style="display:flex;gap:4px;margin-bottom:-1px;position:relative;z-index:1;">
+  {% set tab_labels = [('pregled',tr('Pregled')),('operativni',tr('Operativni')),('parking',tr('Parking')),('podnajam',tr('Podnajam')),('sponzori',tr('Sponzori')),('ostalo',tr('Ostalo'))] %}
+  {% for key, label in tab_labels %}
+  <button onclick="switchTab('{{ key }}')" id="tab-btn-{{ key }}"
+          style="padding:8px 18px;border:1px solid var(--border);border-bottom:none;
+                 border-radius:var(--r-sm) var(--r-sm) 0 0;background:var(--canvas);
+                 font-size:.84rem;cursor:pointer;font-weight:500;
+                 color:var(--ink-muted);transition:all .15s;"
+          class="tab-btn">
+    {{ label }}
+    {% if key in annual_sub %}
+      {% set sub = annual_sub[key] %}
+      {% set sub_net = sub.income - sub.expense %}
+      {% if sub_net != 0 %}
+        <span style="font-size:.7rem;margin-left:4px;color:{{ 'var(--green)' if sub_net > 0 else 'var(--red)' }};">
+          {{ '{:,.0f}'.format(sub_net|abs).replace(',','.') }}
+        </span>
+      {% endif %}
+    {% else %}
+      {% set total_net = annual_income - annual_expense %}
+      {% if total_net != 0 %}
+        <span style="font-size:.7rem;margin-left:4px;color:{{ 'var(--green)' if total_net > 0 else 'var(--red)' }};">
+          {{ '{:,.0f}'.format(total_net|abs).replace(',','.') }}
+        </span>
+      {% endif %}
+    {% endif %}
+  </button>
+  {% endfor %}
+</div>
+
+{# ── Pregled tab (combined overview) ───────────────────────────────── #}
+<div id="tab-pregled" class="tab-pane card" style="display:none;border-radius:0 var(--r-md) var(--r-md) var(--r-md);padding:0;">
+  <div class="card-header" style="border-radius:0 var(--r-md) 0 0;">
+    <span class="card-title">{{ tr('Pregled svih kategorija —') }} {{ year }}</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>{{ tr('Mesec') }}</th>
+          <th class="text-right" style="color:var(--red);">{{ tr('Operativni troškovi') }}</th>
+          <th class="text-right" style="color:var(--green);">{{ tr('Parking') }}</th>
+          <th class="text-right" style="color:var(--green);">{{ tr('Podnajam') }}</th>
+          <th class="text-right" style="color:var(--green);">{{ tr('Sponzori') }}</th>
+          <th class="text-right">{{ tr('Ostalo') }}</th>
+          <th class="text-right" style="color:var(--red);">{{ tr('Ukupno troškovi') }}</th>
+          <th class="text-right" style="color:var(--green);">{{ tr('Ukupno prihodi') }}</th>
+          <th class="text-right" style="font-weight:700;">{{ tr('Neto') }}</th>
+          <th>{{ tr('Status') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in months %}
+        {% set net = m.total_income - m.total_expense %}
+        <tr>
+          <td style="font-weight:500;">{{ m.label }}</td>
+          <td class="num" style="color:var(--red);">{{ money(m.sub_totals['operativni'].expense) }}</td>
+          <td class="num" style="color:var(--green);">{{ money(m.sub_totals['parking'].income - m.sub_totals['parking'].expense) }}</td>
+          <td class="num" style="color:var(--green);">{{ money(m.sub_totals['podnajam'].income - m.sub_totals['podnajam'].expense) }}</td>
+          <td class="num" style="color:var(--green);">{{ money(m.sub_totals['sponzori'].income - m.sub_totals['sponzori'].expense) }}</td>
+          <td class="num">{{ money(m.sub_totals['ostalo'].income - m.sub_totals['ostalo'].expense) }}</td>
+          <td class="num" style="color:var(--red);font-weight:600;">{{ money(m.total_expense) }}</td>
+          <td class="num" style="color:var(--green);font-weight:600;">{{ money(m.total_income) }}</td>
+          <td class="num" style="font-weight:700;">
+            {% if m.has_data %}
+              <span style="color:{{ net_color(net) }};">{{ money(net) }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if m.has_data %}
+              <span class="badge badge-green">{{ m.breakdown|length }} {{ tr("stavki") }}</span>
+            {% else %}
+              <span class="badge badge-gray">{{ tr('Prazno') }}</span>
+            {% endif %}
+          </td>
+          <td style="white-space:nowrap;">
+            <a href="{{ url_for('fixed_costs.detail', year=year, month=m.month) }}" class="btn btn-ghost btn-sm">{{ tr('Detalji') }}</a>
+            <a href="{{ url_for('fixed_costs.new_link', year=year, month=m.month) }}" class="btn btn-ghost btn-sm">{{ tr('+ Dodaj') }}</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="background:var(--canvas-warm);font-weight:600;">
+          <td style="padding:10px 14px;">{{ tr('Godišnji zbir') }}</td>
+          <td class="num" style="padding:10px 14px;color:var(--red);">{{ money(annual_sub['operativni'].expense) }}</td>
+          <td class="num" style="padding:10px 14px;color:var(--green);">{{ money(annual_sub['parking'].income - annual_sub['parking'].expense) }}</td>
+          <td class="num" style="padding:10px 14px;color:var(--green);">{{ money(annual_sub['podnajam'].income - annual_sub['podnajam'].expense) }}</td>
+          <td class="num" style="padding:10px 14px;color:var(--green);">{{ money(annual_sub['sponzori'].income - annual_sub['sponzori'].expense) }}</td>
+          <td class="num" style="padding:10px 14px;">{{ money(annual_sub['ostalo'].income - annual_sub['ostalo'].expense) }}</td>
+          <td class="num" style="padding:10px 14px;color:var(--red);">{{ money(annual_expense) }}</td>
+          <td class="num" style="padding:10px 14px;color:var(--green);">{{ money(annual_income) }}</td>
+          <td class="num" style="padding:10px 14px;">
+            {% set total_net = annual_income - annual_expense %}
+            <span style="color:{{ net_color(total_net) }};">{{ money(total_net) }}</span>
+          </td>
+          <td colspan="2"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+{# ── Operativni tab ──────────────────────────────────────────────── #}
+<div id="tab-operativni" class="tab-pane card" style="border-radius:0 var(--r-md) var(--r-md) var(--r-md);padding:0;">
+  <div class="card-header" style="border-radius:0 var(--r-md) 0 0;">
+    <span class="card-title">{{ tr('Operativni troškovi —') }} {{ year }}</span>
+    <span style="font-size:.78rem;color:var(--ink-muted);margin-left:12px;">{{ tr('Raspoređuju se po događajima u Daily Log-u') }}</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>{{ tr('Mesec') }}</th>
+          <th class="text-right" style="color:var(--ink-muted);">Garden</th>
+          <th class="text-right" style="color:var(--ink-muted);">Corner</th>
+          <th class="text-right" style="color:var(--ink-muted);">{{ tr('Zajednički') }}</th>
+          <th class="text-right">{{ tr('Ukupno troškovi') }}</th>
+          <th class="text-right" style="color:var(--green);">{{ tr('Prihodi op.') }}</th>
+          <th class="text-right" style="font-weight:700;">{{ tr('Neto') }}</th>
+          <th>{{ tr('Status') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in months %}
+        {% set op = m.sub_totals['operativni'] %}
+        {% set op_net = op.income - op.expense %}
+        <tr>
+          <td style="font-weight:500;">{{ m.label }}</td>
+          <td class="num" style="color:var(--red);">{{ money(m.venue_totals['Garden']) }}</td>
+          <td class="num" style="color:var(--red);">{{ money(m.venue_totals['Corner']) }}</td>
+          <td class="num" style="color:var(--red);">{{ money(m.venue_totals['shared']) }}</td>
+          <td class="num" style="color:var(--red);font-weight:600;">{{ money(op.expense) }}</td>
+          <td class="num" style="color:var(--green);">{{ money(op.income) }}</td>
+          <td class="num" style="font-weight:700;">
+            {% if op.expense or op.income %}
+              <span style="color:{{ net_color(op_net) }};">{{ money(op_net) }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if op.rows %}
+              <span class="badge badge-green">{{ op.rows|length }} {{ tr("stavki") }}</span>
+            {% else %}
+              <span class="badge badge-gray">{{ tr('Prazno') }}</span>
+            {% endif %}
+          </td>
+          <td style="white-space:nowrap;">
+            <a href="{{ url_for('fixed_costs.detail', year=year, month=m.month, submodule='operativni') }}" class="btn btn-ghost btn-sm">{{ tr('Detalji') }}</a>
+            <a href="{{ url_for('fixed_costs.new_link', year=year, month=m.month) }}" class="btn btn-ghost btn-sm">{{ tr('+ Dodaj') }}</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="background:var(--canvas-warm);font-weight:600;">
+          <td style="padding:10px 14px;">{{ tr('Godišnji zbir') }}</td>
+          <td class="num" style="padding:10px 14px;color:var(--red);">{{ money(months|sum(attribute='venue_totals.Garden')) }}</td>
+          <td class="num" style="padding:10px 14px;color:var(--red);">{{ money(months|sum(attribute='venue_totals.Corner')) }}</td>
+          <td class="num" style="padding:10px 14px;color:var(--red);">{{ money(months|sum(attribute='venue_totals.shared')) }}</td>
+          <td class="num" style="padding:10px 14px;color:var(--red);">{{ money(annual_sub['operativni'].expense) }}</td>
+          <td class="num" style="padding:10px 14px;color:var(--green);">{{ money(annual_sub['operativni'].income) }}</td>
+          <td class="num" style="padding:10px 14px;">
+            {% set op_annual_net = annual_sub['operativni'].income - annual_sub['operativni'].expense %}
+            <span style="color:{{ net_color(op_annual_net) }};">{{ money(op_annual_net) }}</span>
+          </td>
+          <td colspan="2"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+{# ── Generic submodule tab (Parking, Podnajam, Sponzori, Ostalo) ──── #}
+{% for sub_key, sub_label in [('parking',tr('Parking')),('podnajam',tr('Podnajam')),('sponzori',tr('Sponzori')),('ostalo',tr('Ostalo'))] %}
+<div id="tab-{{ sub_key }}" class="tab-pane card" style="display:none;border-radius:0 var(--r-md) var(--r-md) var(--r-md);padding:0;">
+  <div class="card-header" style="border-radius:0 var(--r-md) 0 0;">
+    <span class="card-title">{{ sub_label }} — {{ year }}</span>
+    {% if sub_key in ['parking','podnajam'] %}
+    <span style="font-size:.78rem;color:var(--ink-muted);margin-left:12px;">{{ tr('Ne raspoređuje se po događajima') }}</span>
+    {% endif %}
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>{{ tr('Mesec') }}</th>
+          <th class="text-right" style="color:var(--green);">{{ tr('Prihodi') }}</th>
+          <th class="text-right" style="color:var(--red);">{{ tr('Troškovi') }}</th>
+          <th class="text-right" style="font-weight:700;">{{ tr('Neto') }}</th>
+          <th>{{ tr('Status') }}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in months %}
+        {% set sub = m.sub_totals[sub_key] %}
+        {% set sub_net = sub.income - sub.expense %}
+        <tr>
+          <td style="font-weight:500;">{{ m.label }}</td>
+          <td class="num" style="color:var(--green);">{{ money(sub.income) }}</td>
+          <td class="num" style="color:var(--red);">{{ money(sub.expense) }}</td>
+          <td class="num" style="font-weight:700;">
+            {% if sub.expense or sub.income %}
+              <span style="color:{{ net_color(sub_net) }};">{{ money(sub_net) }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if sub.rows %}
+              <span class="badge badge-green">{{ sub.rows|length }} {{ tr("stavki") }}</span>
+            {% else %}
+              <span class="badge badge-gray">{{ tr('Prazno') }}</span>
+            {% endif %}
+          </td>
+          <td style="white-space:nowrap;">
+            <a href="{{ url_for('fixed_costs.detail', year=year, month=m.month, submodule=sub_key) }}" class="btn btn-ghost btn-sm">{{ tr('Detalji') }}</a>
+            <a href="{{ url_for('fixed_costs.new_link', year=year, month=m.month) }}" class="btn btn-ghost btn-sm">{{ tr('+ Dodaj') }}</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="background:var(--canvas-warm);font-weight:600;">
+          <td style="padding:10px 14px;">{{ tr('Godišnji zbir') }}</td>
+          <td class="num" style="padding:10px 14px;color:var(--green);">{{ money(annual_sub[sub_key].income) }}</td>
+          <td class="num" style="padding:10px 14px;color:var(--red);">{{ money(annual_sub[sub_key].expense) }}</td>
+          <td class="num" style="padding:10px 14px;">
+            {% set sub_annual_net = annual_sub[sub_key].income - annual_sub[sub_key].expense %}
+            <span style="color:{{ net_color(sub_annual_net) }};">{{ money(sub_annual_net) }}</span>
+          </td>
+          <td colspan="2"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% endfor %}
+
+<script>
+const TABS = ['pregled','operativni','parking','podnajam','sponzori','ostalo'];
+
+function switchTab(key) {
+  TABS.forEach(t => {
+    document.getElementById('tab-' + t).style.display      = t === key ? 'block' : 'none';
+    const btn = document.getElementById('tab-btn-' + t);
+    btn.style.background   = t === key ? 'var(--canvas-warm)' : 'var(--canvas)';
+    btn.style.color        = t === key ? 'var(--ink)'         : 'var(--ink-muted)';
+    btn.style.borderBottom = t === key ? '1px solid var(--canvas-warm)' : '';
+    btn.style.fontWeight   = t === key ? '600' : '500';
+  });
+  localStorage.setItem('fc_tab', key);
+}
+
+// Restore last tab or default to operativni
+const saved = localStorage.getItem('fc_tab');
+switchTab(TABS.includes(saved) ? saved : 'pregled');
+</script>
+{% endblock %}

@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Fiksni troškovi —') }} {{ month_label }} {{ year }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Fiksni troškovi —') }} {{ month_label }} {{ year }}</h1>
+    <p class="page-subtitle">
+      {% if submodule_filter %}
+        <span class="badge badge-blue" style="margin-right:6px;">{{ tr(submodule_filter) }}</span>
+      {% endif %}
+      {{ aggregated|length }} {{ tr("kategorija") }}
+      {% if submodule_filter %}
+        &nbsp;·&nbsp;<a href="{{ url_for('fixed_costs.detail', year=year, month=month) }}" style="font-size:.8rem;color:var(--ink-muted);">{{ tr('Prikaži sve') }}</a>
+      {% endif %}
+    </p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('fixed_costs.new_link', year=year, month=month) }}" class="btn btn-primary btn-sm">{{ tr('+ Dodaj stavku') }}</a>
+    <a href="{{ url_for('fixed_costs.index', year=year) }}" class="btn btn-secondary btn-sm">{{ tr('← Nazad') }}</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Tag</th>
+          <th>{{ tr('Izvor') }}</th>
+          <th>{{ tr('Kontrastrana') }}</th>
+          <th>{{ tr('Referenca') }}</th>
+          <th>{{ tr('Datum') }}</th>
+          <th class="text-right">{{ tr('Iznos (neto)') }}</th>
+          <th>{{ tr('PDV') }}</th>
+          <th></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for group in aggregated %}
+        <!-- Aggregated row -->
+        <tr class="tag-group-row" style="cursor:pointer;background:var(--canvas-warm);" 
+            onclick="toggleGroup('{{ group.tag_name|replace(' ', '_') }}')">
+          <td style="font-weight:600;">
+            <span class="badge {{ 'badge-red' if group.tag_type == 'expense' else 'badge-green' }}">
+              {{ group.tag_name }}
+            </span>
+            {% if group.tag_submodule and group.tag_submodule != 'operativni' %}
+              <span class="badge badge-blue" style="font-size:.68rem;margin-left:4px;">{{ tr(group.tag_submodule) }}</span>
+            {% endif %}
+            {% if group.tag_submodule == 'operativni' and group.tag_venue and group.tag_venue != 'shared' %}
+              <span class="badge badge-gray" style="font-size:.68rem;margin-left:4px;">{{ group.tag_venue }}</span>
+            {% endif %}
+            <span style="margin-left:8px;color:var(--ink-ghost);font-size:.85rem;">▼</span>
+          </td>
+          <td style="color:var(--ink-ghost);font-size:.85rem;">{{ group.count }} {{ tr("stavki") }}</td>
+          <td colspan="3"></td>
+          <td class="num" style="font-weight:600;color:{{ 'var(--red)' if group.tag_type == 'expense' else 'var(--green)' }};">
+            {{ '{:,.0f}'.format(group.total) }}
+          </td>
+          <td colspan="3"></td>
+        </tr>
+        
+        <!-- Detail rows (hidden by default) -->
+        {% for item in group.breakdown %}
+        <tr class="detail-row detail-{{ group.tag_name|replace(' ', '_') }}" style="display:none;">
+          <td style="padding-left:32px;font-size:.85rem;color:var(--ink-ghost);">└</td>
+          <td style="font-size:.85rem;">
+            {% if item.source_type == 'invoice_in' %}
+              {{ tr('Ulaz. faktura') }}
+            {% elif item.source_type == 'invoice_out' %}
+              {{ tr('Izlaz. faktura') }}
+            {% elif item.source_type == 'bank_transaction' %}
+              {{ tr('Banka') }}
+            {% elif item.source_type == 'salary_monthly' %}
+              {{ tr('Plata') }}
+            {% else %}
+              {{ item.source_type }}
+            {% endif %}
+          </td>
+          <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.85rem;">
+            {{ item.counterparty or item.notes or '—' }}
+          </td>
+          <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem;color:var(--ink-muted);">
+            {{ item.ref or '—' }}
+          </td>
+          <td style="font-size:.85rem;">{{ item.doc_date or (item.created_at[:10] if item.created_at else '—') }}</td>
+          <td class="num" style="font-size:.85rem;">
+            {% if item.source_type == 'bank_transaction' and item.vat_rate %}
+              <span style="color:var(--ink-muted);text-decoration:line-through;font-size:.78rem;">{{ '{:,.0f}'.format(item.amount) }}</span><br>
+              <strong>{{ '{:,.0f}'.format(item.net_amount) }}</strong>
+            {% else %}
+              {{ '{:,.0f}'.format(item.net_amount) }}
+            {% endif %}
+          </td>
+          <td style="font-size:.8rem;">
+            {% if item.source_type == 'bank_transaction' %}
+              <form method="post" action="{{ url_for('fixed_costs.set_vat_rate') }}" style="display:inline;">
+                <input type="hidden" name="link_id" value="{{ item.link_id }}">
+                <input type="hidden" name="year" value="{{ year }}">
+                <input type="hidden" name="month" value="{{ month }}">
+                <select name="vat_rate" onchange="this.form.submit()"
+                        style="font-size:.75rem;padding:2px 4px;border-radius:var(--r-sm);border:1px solid var(--border);">
+                  <option value="0"  {{ 'selected' if not item.vat_rate or item.vat_rate == 0  }}>0% PDV</option>
+                  <option value="10" {{ 'selected' if item.vat_rate == 10 }}>10% PDV</option>
+                  <option value="20" {{ 'selected' if item.vat_rate == 20 }}>20% PDV</option>
+                </select>
+              </form>
+            {% endif %}
+          </td>
+          <td style="font-size:.85rem;">
+            {% if item.detail_url %}
+              <a href="{{ item.detail_url }}" target="_blank" style="color:var(--primary);text-decoration:none;font-size:.8rem;" title="{{ tr('Otvori izvor') }}">↗</a>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('fixed_costs.delete_link', link_id=item.link_id) }}" 
+                  style="display:inline;" 
+                  onsubmit="return confirm('Obrisati ovu stavku?')">
+              <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--red);font-size:.85rem;" title="{{ tr('Obriši') }}">
+                ✕
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+        
+        {% if not aggregated %}
+        <tr>
+          <td colspan="6" style="text-align:center;padding:40px;color:var(--ink-ghost);">
+            {{ tr('Nema stavki za ovaj mesec') }}
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+      <tfoot>
+        <tr style="background:var(--canvas-warm);font-weight:600;">
+          <td colspan="3">{{ tr('Ukupno') }}</td>
+          <td class="num">
+            {% set total = aggregated|sum(attribute='total') %}
+            {{ '{:,.0f}'.format(total) }}
+          </td>
+          <td colspan="2"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<script>
+function toggleGroup(tagName) {
+  const detailRows = document.querySelectorAll('.detail-' + tagName);
+  const isVisible = detailRows[0].style.display !== 'none';
+  
+  detailRows.forEach(row => {
+    row.style.display = isVisible ? 'none' : 'table-row';
+  });
+}
+</script>
+{% endblock %}

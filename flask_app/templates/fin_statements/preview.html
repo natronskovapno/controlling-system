@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "fin_statements/_macros.html" import money, check_badge, note %}
+{% block title %}{{ tr('Bruto bilans — Pregled') }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr("Pregled —") }} {{ m.source_file }}</h1>
+    <p class="page-subtitle">
+      {{ m.company or '—' }} {{ tr("· PIB") }} {{ m.pib or '—' }} · {{ m.fmt }} ·
+      {{ tr('period') }} <strong>{{ m.period_from }} → {{ m.period_to }}</strong>
+      {% if m.is_closing %}· <span class="badge badge-blue">{{ tr('Zaključni') }}</span>{% endif %}
+    </p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('fin_statements.snapshot_upload') }}" class="btn btn-secondary btn-sm">{{ tr('← Otkaži') }}</a>
+  </div>
+</div>
+
+{% if duplicate %}
+{{ note(tr('Identičan fajl je već uvezen (period do ') ~ duplicate ~ tr('). Potvrda će ga zameniti.'), 'warning') }}
+{% elif existing %}
+{{ note(tr('Za ovaj period već postoji bilans (') ~ existing.source_file ~ ', uvezen ' ~ existing.imported_at ~ tr('). Potvrda će ga zameniti.'), 'warning') }}
+{% endif %}
+{% for w in m.warnings %}
+{% if w is string %}{{ note(tr(w)) }}{% else %}{{ note(tr(w[0], **w[1])) }}{% endif %}
+{% endfor %}
+
+<div class="section-grid" style="grid-template-columns:1fr 1fr;gap:24px;align-items:start;margin-top:16px;">
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Kontrole') }}</span>{{ check_badge(m.ok) }}</div>
+    <div class="table-wrap">
+      <table class="data-table" style="font-size:.82rem;">
+        <thead><tr><th>{{ tr('Provera') }}</th><th>{{ tr('Rezultat') }}</th><th>{{ tr('Detalj') }}</th></tr></thead>
+        <tbody>
+        {% for c in m.checks %}
+          <tr><td>{{ tr(c.name) }}</td><td>{{ check_badge(c.ok) }}</td><td class="text-muted">{{ tr(c.detail, **(c.args or {})) }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">{{ tr('Po klasama') }}</span><span class="badge badge-amber">{{ m.lines|length }} {{ tr("konta") }}</span></div>
+    <div class="table-wrap">
+      <table class="data-table" style="font-size:.82rem;">
+        <thead><tr><th>{{ tr('Klasa') }}</th><th class="text-right">{{ tr('Konta') }}</th><th class="text-right">{{ tr('Saldo duguje') }}</th><th class="text-right">{{ tr('Saldo potražuje') }}</th></tr></thead>
+        <tbody>
+        {% for c in classes %}
+          <tr><td>{{ c.klasa }}</td><td class="text-right">{{ c.count }}</td>
+              <td class="text-right">{{ money(c.saldo_d) }}</td><td class="text-right">{{ money(c.saldo_p) }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('fin_statements.snapshot_commit') }}" style="margin-top:24px;display:flex;gap:12px;align-items:center;">
+  <input type="hidden" name="token" value="{{ m.token }}">
+  {% if m.ok %}
+    <button type="submit" class="btn btn-primary">{{ tr('Potvrdi upis') }}</button>
+  {% else %}
+    <label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" name="force" value="1"> {{ tr('Upiši uprkos neuspelim kontrolama') }}</label>
+    <button type="submit" class="btn btn-primary">{{ tr('Potvrdi upis') }}</button>
+  {% endif %}
+  <a href="{{ url_for('fin_statements.snapshot_upload') }}" class="btn btn-secondary">{{ tr('Otkaži') }}</a>
+</form>
+{% endblock %}

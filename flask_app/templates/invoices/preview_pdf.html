@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('Pregled — RČ fakture') }}{% endblock %}
+
+{% macro money(val) %}
+  {%- if val is not none and val != '' and val|float != 0 -%}
+    {{ "{:,.0f}".format(val|float).replace(",",".") }}
+  {%- else -%}—{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-header__left">
+    <h1 class="page-title">{{ tr('Pregled parsiranih faktura') }}</h1>
+    <p class="page-subtitle">{{ count }} {{ tr('faktura pronađeno — proverite pre upisa') }}</p>
+  </div>
+  <div class="page-header__actions">
+    <a href="{{ url_for('invoices.upload_pdf') }}" class="btn btn-secondary btn-sm">{{ tr('← Učitaj ponovo') }}</a>
+  </div>
+</div>
+
+{# Summary KPIs #}
+<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px;">
+  <div class="kpi-card kpi-card--blue">
+    <div class="kpi-card__label">{{ tr('Faktura') }}</div>
+    <div class="kpi-card__value" style="font-size:1.9rem;">{{ count }}</div>
+    <div class="kpi-card__sub">{{ tr('parsiranih iz PDF-a') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Ukupno neto') }}</div>
+    <div class="kpi-card__value" style="font-size:1.5rem;">
+      {{ money(total_net) }}<span class="kpi-card__unit">RSD</span>
+    </div>
+    <div class="kpi-card__sub">{{ tr('bez PDV-a') }}</div>
+  </div>
+  <div class="kpi-card kpi-card--accent">
+    <div class="kpi-card__label">{{ tr('Ukupno bruto') }}</div>
+    <div class="kpi-card__value" style="font-size:1.5rem;">
+      {{ money(total_net + total_pdv) }}<span class="kpi-card__unit">RSD</span>
+    </div>
+    <div class="kpi-card__sub">{{ tr('sa PDV-om') }}</div>
+  </div>
+</div>
+
+{# Per-invoice cards #}
+{% for r in rows %}
+<div class="card" style="margin-bottom:16px;border-left:3px solid var(--accent);">
+  <div class="card-body" style="padding:16px 20px;">
+
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
+      <div>
+        <div style="font-size:1rem;font-weight:700;">{{ r.get('invoice_number_ext','—') }}</div>
+        <div style="font-size:.8rem;color:var(--ink-muted);">{{ r.get('source_file','') }}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:1.2rem;font-weight:700;">{{ money((r.get('net_amount',0) or 0) + (r.get('pdv_amount',0) or 0)) }} RSD</div>
+        <div style="font-size:.78rem;color:var(--ink-muted);">{{ tr('bruto (sa PDV)') }}</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:12px;">
+      <div>
+        <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:2px;">{{ tr('Klijent') }}</div>
+        <div style="font-size:.88rem;font-weight:500;">{{ r.get('client_name') or '—' }}</div>
+      </div>
+      <div>
+        <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:2px;">{{ tr("PIB") }}</div>
+        <div style="font-size:.88rem;">{{ r.get('client_pib') or '—' }}</div>
+      </div>
+      <div>
+        <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:2px;">{{ tr('Datum izdavanja') }}</div>
+        <div style="font-size:.88rem;">{{ r.get('date_issued') or '—' }}</div>
+      </div>
+      <div>
+        <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:2px;">{{ tr('Rok dospeća') }}</div>
+        <div style="font-size:.88rem;">{{ r.get('due_date') or '—' }}</div>
+      </div>
+      <div>
+        <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:2px;">{{ tr('Neto') }}</div>
+        <div style="font-size:.88rem;font-weight:600;">{{ money(r.get('net_amount',0)) }} RSD</div>
+      </div>
+      <div>
+        <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted);margin-bottom:2px;">{{ tr('PDV') }} {{ (r.get('pdv_rate') or 0)|int }}%</div>
+        <div style="font-size:.88rem;">{{ money(r.get('pdv_amount',0)) }} RSD</div>
+      </div>
+    </div>
+
+    {% if r.get('description') %}
+    <div style="font-size:.8rem;color:var(--ink-muted);padding:8px 10px;
+                background:var(--canvas-warm);border-radius:var(--r-sm);">
+      <span style="font-weight:600;color:var(--ink);">{{ tr('Stavka:') }}</span> {{ r.get('description') }}
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endfor %}
+
+{# Confirm / cancel #}
+<div style="display:flex;gap:12px;align-items:center;margin-top:8px;
+            padding:16px 20px;background:var(--surface);border-radius:var(--r-md);
+            border:1px solid var(--border-soft);">
+  <div style="flex:1;font-size:.84rem;color:var(--ink-muted);">
+    {{ tr('Kliknite') }} <strong>{{ tr('Upiši u sistem') }}</strong> {{ tr('da biste dodali ove fakture u bazu kao izlazne bele fakture sa statusom') }} <em>{{ tr('Neplaćeno') }}</em>.
+  </div>
+  <a href="{{ url_for('invoices.upload_pdf') }}" class="btn btn-ghost btn-sm">{{ tr('Odustani') }}</a>
+  <form method="post" action="{{ url_for('invoices.commit_pdf') }}" style="display:inline;">
+    <button type="submit" class="btn btn-primary">
+      {{ tr('Upiši') }} {{ count }} {{ tr("faktur") }}{{ 'u' if count == 1 else 'e' if count in [2,3,4] else 'a' }} {{ tr("u sistem") }}
+    </button>
+  </form>
+</div>
+
+{% endblock %}
