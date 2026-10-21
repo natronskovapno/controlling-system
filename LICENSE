@@ -1,0 +1,37 @@
+Copyright (c) 2026 F.B. All rights reserved.
+
+This repository is published so that the author's work can be read and
+assessed. It is not open source, and no permission to use it is granted by
+the act of publishing it here.
+
+PERMITTED
+
+  You may read the source code, and you may run it locally, unmodified,
+  against the generated demo data included in this repository, for the sole
+  purpose of evaluating the author's work.
+
+NOT PERMITTED WITHOUT PRIOR WRITTEN PERMISSION
+
+  - Using this software, or any part of it, in any product, service, or
+    internal system, whether commercial or not.
+  - Copying, modifying, translating, or creating derivative works from it.
+  - Redistributing, publishing, sublicensing, or selling it, in source or
+    compiled form, in whole or in part.
+  - Using it as training data or as an evaluation set for a machine
+    learning model.
+
+No licence is granted to any trademark, trade name, or branding.
+
+The demo data in this repository is generated. It contains no figures,
+names, or records belonging to any real business.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF,
+OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+For permission beyond the scope of this licence, contact the copyright
+holder.
