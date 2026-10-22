@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 700" width="1240" height="700"
+     role="img" aria-label="The spreadsheet system that came before: around twenty-five separate inputs arriving by export, portal download, email, chat and photograph, reconciled by hand into fourteen base tables that fed 29 linked sheets in all, seven report sheets and fifteen Power BI pages. Every connection was a person moving a file.">
+  <rect x="0" y="0" width="1240" height="700" fill="#fbfaf8"/>
+
+  <g font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif">
+
+    <!-- ══════════ title ══════════ -->
+    <text x="30" y="34" font-size="15" font-weight="700" fill="#2b2a28">Before — the spreadsheet system</text>
+    <text x="30" y="54" font-size="11.5" fill="#6b6560">29 linked sheets and tables, reconciled by hand every week. Every arrow below was a person moving a file.</text>
+
+    <!-- ══════════ column headings ══════════ -->
+    <g font-size="11" font-weight="700" fill="#8a837c" letter-spacing="1.1">
+      <text x="30"  y="88">DATA ARRIVING · ~25 INPUTS</text>
+      <text x="360" y="88">BASE TABLES · 14</text>
+      <text x="650" y="88">REPORT SHEETS · 7</text>
+      <text x="930" y="88">POWER BI · 15 PAGES</text>
+    </g>
+
+    <!-- ══════════ A. inputs ══════════ -->
+    <rect x="30" y="100" width="300" height="556" rx="8" fill="#fff" stroke="#d9d3ca"/>
+
+    <text x="46" y="124" font-size="10.5" font-weight="600" fill="#b08828" letter-spacing=".4">AUTOMATED EXPORT · POS BACK OFFICE</text>
+    <g font-size="11.5" fill="#2b2a28">
+      <text x="46" y="145">Daily takings</text><text x="250" y="145" font-size="10" fill="#8a837c">PDF</text>
+      <text x="46" y="164">Hourly sales</text><text x="250" y="164" font-size="10" fill="#8a837c">Excel</text>
+      <text x="46" y="183">Stock list</text><text x="250" y="183" font-size="10" fill="#8a837c">Excel</text>
+      <text x="46" y="202">Entertainment usage</text><text x="250" y="202" font-size="10" fill="#8a837c">Excel</text>
+    </g>
+
+    <text x="46" y="232" font-size="10.5" font-weight="600" fill="#b08828" letter-spacing=".4">DOWNLOADED FROM A PORTAL</text>
+    <g font-size="11.5" fill="#2b2a28">
+      <text x="46" y="253">Purchase invoices</text><text x="222" y="253" font-size="10" fill="#8a837c">PDF / Word / XML</text>
+      <text x="46" y="272">Bank statements · first bank</text><text x="250" y="272" font-size="10" fill="#8a837c">PDF</text>
+      <text x="46" y="291">Bank statements · second bank</text><text x="250" y="291" font-size="10" fill="#8a837c">PDF</text>
+    </g>
+
+    <text x="46" y="321" font-size="10.5" font-weight="600" fill="#b08828" letter-spacing=".4">SPREADSHEET FROM A COLLEAGUE</text>
+    <g font-size="11.5" fill="#2b2a28">
+      <text x="46" y="342">Waiter shift wages</text><text x="250" y="342" font-size="10" fill="#8a837c">Excel</text>
+      <text x="46" y="361">Casual labour shift wages</text><text x="250" y="361" font-size="10" fill="#8a837c">Excel</text>
+      <text x="46" y="380">Payroll · two separate sheets</text><text x="250" y="380" font-size="10" fill="#8a837c">Excel</text>
+    </g>
+
+    <text x="46" y="410" font-size="10.5" font-weight="600" fill="#b08828" letter-spacing=".4">EMAIL, CHAT, PHOTO OR SPOKEN</text>
+    <g font-size="11.5" fill="#2b2a28">
+      <text x="46" y="431">Sales invoices</text><text x="222" y="431" font-size="10" fill="#8a837c">PDF / Word / XML</text>
+      <text x="46" y="450">Ticket sales · ticketing platform</text><text x="250" y="450" font-size="10" fill="#8a837c">PDF</text>
+      <text x="46" y="469">Ticket sales · three promoters</text><text x="222" y="469" font-size="10" fill="#8a837c">email / chat</text>
+      <text x="46" y="488">Venue hire details</text><text x="222" y="488" font-size="10" fill="#8a837c">email / chat</text>
+      <text x="46" y="507">Technical costs</text><text x="208" y="507" font-size="10" fill="#8a837c">PDF / email / spoken</text>
+      <text x="46" y="526">Hourly parking takings</text><text x="250" y="526" font-size="10" fill="#8a837c">photo</text>
+    </g>
+
+    <text x="46" y="556" font-size="10.5" font-weight="600" fill="#b08828" letter-spacing=".4">OTHER</text>
+    <g font-size="11.5" fill="#2b2a28">
+      <text x="46" y="577">Booking calendar</text><text x="222" y="577" font-size="10" fill="#8a837c">shared calendar</text>
+      <text x="46" y="596">Permanent staff salaries</text><text x="250" y="596" font-size="10" fill="#8a837c">contracts</text>
+      <text x="46" y="615">Other income</text><text x="222" y="615" font-size="10" fill="#8a837c">various sources</text>
+      <text x="46" y="634">Other expenses</text><text x="222" y="634" font-size="10" fill="#8a837c">various sources</text>
+    </g>
+
+    <!-- ══════════ B. workbooks ══════════ -->
+    <rect x="360" y="100" width="250" height="410" rx="8" fill="#fff" stroke="#d9d3ca"/>
+    <g font-size="11.5" fill="#2b2a28">
+      <text x="376" y="128" font-weight="600">Daily log · operating results</text>
+      <text x="376" y="152">Payables tracking</text>
+      <text x="376" y="176">Payments made</text>
+      <text x="376" y="200">Receivables tracking</text>
+      <text x="376" y="224">Payments received</text>
+      <text x="376" y="248">Bank statements</text>
+      <text x="376" y="272">Account turnover</text>
+      <text x="376" y="296">Electricity</text>
+      <text x="376" y="320">Fixed costs</text>
+      <text x="376" y="344">Other fixed expenses</text>
+      <text x="376" y="368">Quantity per unit</text>
+      <text x="376" y="392">Source material</text>
+      <text x="376" y="416">Data ingest</text>
+      <text x="376" y="440">Pivot tables</text>
+    </g>
+    <text x="376" y="470" font-size="10.5" fill="#6b6560">The tables everything else was built</text>
+    <text x="376" y="484" font-size="10.5" fill="#6b6560">from. Across the whole system they</text>
+    <text x="376" y="498" font-size="10.5" fill="#6b6560">fed 29 linked sheets, updated by hand.</text>
+
+    <!-- ══════════ C. report sheets ══════════ -->
+    <rect x="650" y="100" width="250" height="248" rx="8" fill="#fff" stroke="#d9d3ca"/>
+    <g font-size="11.5" fill="#2b2a28">
+      <text x="666" y="128">Projections</text>
+      <text x="666" y="152">VAT calculator</text>
+      <text x="666" y="176">Payments to be made</text>
+      <text x="666" y="200">Profit and loss</text>
+      <text x="666" y="224">Card usage</text>
+      <text x="666" y="248">Entertainment</text>
+      <text x="666" y="272">Hourly sales</text>
+      <text x="666" y="300" font-weight="600" fill="#b08828">Date table</text>
+    </g>
+    <text x="666" y="326" font-size="10.5" fill="#6b6560">The shared spine every Power BI</text>
+    <text x="666" y="340" font-size="10.5" fill="#6b6560">page depended on.</text>
+
+    <!-- ══════════ D. power bi ══════════ -->
+    <rect x="930" y="100" width="280" height="392" rx="8" fill="#fff" stroke="#d9d3ca"/>
+    <g font-size="11.5" fill="#2b2a28">
+      <text x="946" y="128">Income</text>
+      <text x="946" y="152">Expenses</text>
+      <text x="946" y="176">Profit</text>
+      <text x="946" y="200">Operating profit by day</text>
+      <text x="946" y="224">Events</text>
+      <text x="946" y="248">VAT</text>
+      <text x="946" y="272">Hourly sales</text>
+      <text x="946" y="296">Beer sales · two pages</text>
+      <text x="946" y="320">Payment turnover</text>
+      <text x="946" y="344">Last twelve months · two pages</text>
+      <text x="946" y="368">Entertainment</text>
+      <text x="946" y="392">Entertainment usage</text>
+      <text x="946" y="416">Card usage</text>
+    </g>
+    <text x="946" y="446" font-size="10.5" fill="#6b6560">Refreshed only when the workbooks</text>
+    <text x="946" y="460" font-size="10.5" fill="#6b6560">beneath them had been brought</text>
+    <text x="946" y="474" font-size="10.5" fill="#6b6560">up to date.</text>
+
+    <!-- ══════════ flow arrows ══════════ -->
+    <g stroke="#c9c2b8" stroke-width="1.4" fill="none" marker-end="url(#arrowB)">
+      <path d="M 336 300 L 354 300"/>
+      <path d="M 616 240 L 644 240"/>
+      <path d="M 906 240 L 924 240"/>
+    </g>
+
+    <!-- ══════════ footnote ══════════ -->
+    <text x="30" y="682" font-size="10.5" fill="#6b6560">Names of people, banks and vendors have been replaced with their roles. The structure and the counts are unchanged.</text>
+  </g>
+
+  <defs>
+    <marker id="arrowB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c9c2b8"/>
+    </marker>
+  </defs>
+</svg>
