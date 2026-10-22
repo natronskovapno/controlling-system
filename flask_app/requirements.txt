@@ -1,3 +1,7 @@
+# The server the hosted demo runs behind. Flask's built-in server is for
+# development only and should not face the internet.
+gunicorn>=22.0
+
 # The dashboard itself needs only Flask. Everything below is imported lazily,
 # inside the function that uses it, so the application starts and every page
 # renders without them — but the file import and export routes fail at the

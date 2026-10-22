@@ -14,19 +14,26 @@ import tempfile
 import threading
 from datetime import date, datetime, timezone
 
-from flask import Flask, render_template, jsonify, request
+# ---------------------------------------------------------------------------
+# Import path
+# ---------------------------------------------------------------------------
+# config.py, translations.py and pdv_lib.py live at the PROJECT ROOT, one level
+# above flask_app/, so that the drive letter and folder name do not matter.
+# The root has to join sys.path before any of this package's own modules are
+# imported: i18n reads translations at import time, so doing this further down
+# the file leaves the application unable to start from inside flask_app/.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+from flask import (Flask, flash, jsonify, redirect, render_template, request,
+                   url_for)
 from db import get_db, close_db
 import i18n
 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-# Paths, the Flask secret and the interpreter used to launch helper scripts all
-# come from config.py at the PROJECT ROOT (one level above flask_app/), so the
-# drive letter and folder name no longer matter.
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
 try:
     import config
 except ImportError:
@@ -153,6 +160,28 @@ def _cf_worker():
                              cwd=config.SCRIPTS_DIR, env=env)
     except Exception:
         pass                 # analytics must never break a page load
+
+
+@app.before_request
+def _read_only_in_demo_mode():
+    """In demo mode the application refuses anything that is not a read.
+
+    The published demo is open to anyone, so nothing a visitor does may change
+    the database or reach an outside service. Every write in this application
+    arrives as a POST, so refusing non-read methods here covers all of them at
+    once — and, unlike a decorator applied route by route, it cannot be
+    forgotten when a new route is added.
+    """
+    if not getattr(config, "DEMO_MODE", False):
+        return None
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return None
+
+    message = i18n.tr("Demo režim: izmene i uvoz podataka su onemogućeni.")
+    if request.path.startswith("/api/"):
+        return jsonify({"ok": False, "error": message}), 403
+    flash(message, "warning")
+    return redirect(request.referrer or url_for("index"))
 
 
 @app.before_request
