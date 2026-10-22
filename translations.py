@@ -2065,6 +2065,8 @@ TRANSLATIONS: dict[str, str] = {
         "Cloudflare keeps only about 30 days on the free plan — after that it "
         "is lost for good.",
     "Stopa (%)": "Rate (%)",
+    "Demo režim: izmene i uvoz podataka su onemogućeni.":
+        "Demo mode: changes and data imports are disabled.",
 
     # --- trial balance parser diagnostics ---------------------------------
     "Podržani formati: PDF, XLSX.": "Supported formats: PDF, XLSX.",

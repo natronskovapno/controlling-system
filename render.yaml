@@ -1,0 +1,38 @@
+# Deployment description for the hosted demo.
+#
+# Render reads this file when the repository is connected as a Blueprint, so
+# the service is configured from here rather than by filling in a form.
+#
+# The demo database is not in the repository — it is generated during the
+# build, which takes about fifteen seconds. That keeps a 99 MB binary out of
+# version control and guarantees the deployed data matches the generator in
+# the same commit.
+
+services:
+  - type: web
+    name: controlling-system-demo
+    runtime: python
+    plan: free
+    region: frankfurt
+
+    buildCommand: |
+      pip install -r flask_app/requirements.txt
+      cp config.example.py config.py
+      python -m demo_data.generate
+      python -m demo_data.verify demo.db
+
+    # One worker is enough for a demo, and it keeps well inside the memory the
+    # free plan allows. The longer timeout is for the few pages that aggregate
+    # across the whole period.
+    startCommand: cd flask_app && gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 120 app:app
+
+    envVars:
+      # Read-only: the application refuses every write and every outbound call.
+      - key: CONTROLLING_DEMO_MODE
+        value: "1"
+      # Signs the session cookie that remembers the chosen language. Render
+      # generates a value and keeps it; it is never in the repository.
+      - key: CONTROLLING_SECRET_KEY
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: "3.11.9"
