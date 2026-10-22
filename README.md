@@ -12,6 +12,10 @@ entities, cost categories and reporting periods are all configurable. What is
 fixed is the principle underneath: every figure traces back to a transaction,
 and nothing is entered into the system twice.
 
+**[Live demo](https://controlling-system-demo.onrender.com)** — the whole system,
+running on generated data. It sleeps when nobody is using it, so the first page
+can take a minute to come up.
+
 ![Dashboard](docs/screenshots/dashboard.png)
 
 ---
@@ -183,7 +187,9 @@ and that the VAT figures match the invoices.
 
 ## Running it
 
-Requires Python 3.11 or newer.
+The [hosted demo](https://controlling-system-demo.onrender.com) is this
+repository deployed as it stands, built by `render.yaml`. To run the same thing
+locally, Python 3.11 or newer.
 
 ```bash
 pip install -r flask_app/requirements.txt
