@@ -88,7 +88,7 @@ they are needed.
 
 ---
 
-# Technical detail
+# Technical details
 
 ## How it works
 
