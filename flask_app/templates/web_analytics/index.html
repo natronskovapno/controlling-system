@@ -170,7 +170,7 @@
   </div>
   <div style="font-size:.78rem;color:var(--ink-muted);margin-bottom:18px">
     {% if filters.hour_mode == 'avg' %}
-      {{ tr('Prosek po satu, preko') }} {{ active_days }} {{ 'dana' if active_days != 1 else 'dan' }} {{ tr("sa podacima") }}
+      {{ tr('Prosek po satu, preko') }} {{ active_days }} {{ tr('dana') if active_days != 1 else tr('dan') }} {{ tr("sa podacima") }}
     {% else %}
       {{ tr('Ukupno po satu za ceo period') }}
     {% endif %}
