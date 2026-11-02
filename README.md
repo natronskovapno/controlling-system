@@ -88,7 +88,7 @@ they are needed.
 
 ---
 
-# Technical details
+# Technical detail
 
 ## How it works
 
@@ -223,6 +223,7 @@ demo_data/            synthetic data generator
   plan.py               the day-by-day operating plan everything derives from
   gen_*.py              per-domain generators
   verify.py             consistency checks over the generated database
+scripts/              the one script the application shells out to
 schema.sql            database structure, no data
 translations.py       Serbian to English UI catalogue
 config.example.py     configuration template; copy to config.py
@@ -230,6 +231,19 @@ pdv_lib.py            VAT calculation helpers
 ```
 
 About 32,000 lines across Python, Jinja, CSS and JavaScript.
+
+## How it was built
+
+This system was built with AI assistance. I am not a programmer and did not
+write the code — Claude did. Everything around the code is mine: the idea, the
+structure, how the modules relate to one another, how each figure is derived,
+and every rule, parameter and definition the system applies. I decided what it
+had to do and what counted as correct; Claude turned that into working code.
+
+Each module was checked against the figures the business was already producing
+by hand before it replaced them, and the checks built into the interface exist
+because specific errors got through along the way. The reasoning behind every
+number in this system is mine, and I can account for all of it.
 
 ## License
 

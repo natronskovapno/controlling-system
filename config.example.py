@@ -41,7 +41,7 @@ def _p(*parts) -> str:
 # the system against live data.
 DB_PATH = os.environ.get("CONTROLLING_DB") or _p("demo.db")
 
-SCRIPTS_DIR = _p("ingestion")
+SCRIPTS_DIR = _p("scripts")
 DATA_DIR = _p("data")
 DB_DUMP_DIR = _p("db_dump")
 

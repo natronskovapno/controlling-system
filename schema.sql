@@ -797,7 +797,20 @@ CREATE TABLE IF NOT EXISTS salaries_monthly (
     monthly_amount REAL NOT NULL,
     valid_from TEXT NOT NULL,
     valid_to TEXT,
-    monthly_gross REAL DEFAULT 0
+    monthly_gross REAL DEFAULT 0,
+    -- Set by the salary editor when a period changes, cleared by the
+    -- allocation script. Nothing re-allocates on its own.
+    needs_sync INTEGER DEFAULT 0,
+    updated_at TEXT
+);
+
+-- One row, id = 1. Carries the pending-sync banner shown on the salary screen
+-- and the output of the last allocation run.
+CREATE TABLE IF NOT EXISTS salary_sync_state (
+    id         INTEGER PRIMARY KEY,
+    dirty      INTEGER DEFAULT 0,
+    updated_at TEXT,
+    detail     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS sales_hourly (
