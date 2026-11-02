@@ -140,7 +140,7 @@ EMPLOYEES = [
     ("Luka Djordjevic", "Waiter", "casual_a", 0),
     ("Sara Pavlovic", "Waiter", "casual_a", 0),
     ("Lazar Ilic", "Waiter", "casual_b", 0),
-    ("Milan Ristic", "Security", "casual_b", 0),
+    ("Relja Ristic", "Security", "casual_b", 0),
     ("Vuk Simic", "Security", "casual_b", 0),
     ("Katarina Tomic", "Host", "casual_a", 0),
     ("Dusan Zivkovic", "Technician", "casual_b", 0),
@@ -255,6 +255,7 @@ FIXED_COST_TAGS = [
     ("Sublease income", "income", "podnajam", "Corner"),
     ("Sponsorship income", "income", "sponzori", "shared"),
     ("Other income", "income", "ostalo", "shared"),
+    ("Salaries", "expense", "operativni", "shared"),
 ]
 
 # --- Web analytics --------------------------------------------------------

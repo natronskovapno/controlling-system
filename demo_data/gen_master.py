@@ -98,7 +98,12 @@ def build_people(con, start: dt.date) -> list[dict]:
         "VALUES (?,?,?,?)", hist_rows)
     con.executemany(
         "INSERT INTO salaries_monthly (employee_name, role, monthly_amount, valid_from, "
-        "valid_to, monthly_gross) VALUES (?,?,?,?,?,?)", sal_rows)
+        "valid_to, monthly_gross, needs_sync, updated_at) VALUES (?,?,?,?,?,?,0,?)",
+        [r + (iso(start),) for r in sal_rows])
+    # The demo opens with nothing pending, so the salary screen shows no
+    # sync banner.
+    con.execute("INSERT OR REPLACE INTO salary_sync_state (id, dirty, updated_at, detail) "
+                "VALUES (1, 0, ?, NULL)", (iso(start),))
     return staff
 
 
