@@ -11,6 +11,23 @@ parse_file(path) -> dict:
   language. Older snapshots stored a plain string, which the templates still
   accept.
 Saldo is not stored from the file; it is derived as uk_d - uk_p.
+
+Two PDF layouts are recognised:
+
+  A — "legacy": POČETNO STANJE | TEKUĆI PROMET | UKUPAN PROMET | SALDO.
+      Parsed positionally from the sequence of numbers on the line.
+
+  B — "TP/SALDO" (bookkeeper changed format in 2026): TEKUĆI PROMET | SALDO only.
+      There is no opening-balance column and no separate cumulative-turnover
+      column; the period runs from 1 January, so TEKUĆI PROMET already *is*
+      the cumulative turnover and saldo = promet D − promet P on every row.
+      Mapped as ps = 0, tp = uk = the two promet columns.
+
+      Layout B leaves blanks in the middle of a line (a konto with only a
+      credit saldo prints nothing in the saldo-duguje column), so the numbers
+      cannot be read in sequence — each one is assigned to a column by where
+      it ENDS on the line. The column right edges come from the
+      "KONTO OPIS DUGUJE POTRAŽUJE ..." header, which repeats on every page.
 """
 import re
 from datetime import date
@@ -19,6 +36,15 @@ NUM_RE = re.compile(r'-?\d{1,3}(?:\.\d{3})*,\d{2}')
 KONTO_RE = re.compile(r'^\s*(\d{1,6})\b')
 PERIOD_RE = re.compile(r'(\d{2})\.(\d{2})\.(\d{2,4})\s*-\s*(\d{2})\.(\d{2})\.(\d{2,4})')
 CLOSING_KONTOS = ('599', '699')          # plus whole class 7
+
+# Column header of layout B. Some pages render Ž as @ (font artefact in the
+# bookkeeper's export), so the cedilla character is matched loosely.
+COLHDR_RE = re.compile(r'KONTO\s+OPIS', re.I)
+COLTOK_RE = re.compile(r'DUGUJE|POTRA[ŽZ@]UJE')
+COL_TOL = 3                              # how far a number may end from its column edge
+
+LAYOUT_LEGACY = 'PDF'
+LAYOUT_TP_SALDO = 'PDF (promet + saldo)'
 
 
 def _num(s):
@@ -64,8 +90,21 @@ def _pdf_text(path):
         raise RuntimeError('Za PDF je potreban paket pypdf (pip install pypdf) ili pdfplumber.')
 
 
-def _parse_pdf(path):
-    text = _pdf_text(path)
+def _column_edges(text):
+    """
+    Right edges of the numeric columns, taken from the first column-header line.
+    Returns [] when the file has no such header (then layout A is assumed).
+    """
+    for line in text.splitlines():
+        if COLHDR_RE.search(line):
+            edges = [m.end() + 1 for m in COLTOK_RE.finditer(line)]
+            if edges:
+                return edges
+    return []
+
+
+def _parse_pdf_legacy(text):
+    """Layout A — read the numbers in sequence; unchanged behaviour."""
     rows, subtotals, classes, ukupno = [], {}, {}, None
     for line in text.splitlines():
         nums = NUM_RE.findall(line)
@@ -87,7 +126,101 @@ def _parse_pdf(path):
             rows.append({'konto': konto, 'naziv': naziv or None,
                          'ps_d': vals[0], 'ps_p': vals[1], 'tp_d': vals[2],
                          'tp_p': vals[3], 'uk_d': vals[4], 'uk_p': vals[5]})
-    return text[:3000], rows, subtotals, classes, ukupno
+    return text[:3000], rows, subtotals, classes, ukupno, LAYOUT_LEGACY, {}
+
+
+def _columns_on_line(line, edges):
+    """
+    Place every number on the line into its column by right edge.
+    Returns (values, placed, stray) — stray counts numbers that landed
+    nowhere, which would mean the header offsets do not fit this line.
+    """
+    vals = [0.0] * len(edges)
+    placed = stray = 0
+    for m in NUM_RE.finditer(line):
+        end = m.end()
+        ci = min(range(len(edges)), key=lambda i: abs(end - edges[i]))
+        if abs(end - edges[ci]) > COL_TOL:
+            stray += 1
+            continue
+        vals[ci] = _num(m.group(0))
+        placed += 1
+    return vals, placed, stray
+
+
+def _parse_pdf_tp_saldo(text, edges):
+    """
+    Layout B — TEKUĆI PROMET (duguje, potražuje) + SALDO (duguje, potražuje).
+
+    Normalised onto the legacy shape so everything downstream is unchanged:
+        ps_d = ps_p = 0
+        tp_d = uk_d = promet duguje
+        tp_p = uk_p = promet potražuje
+    The saldo columns are not stored (the engine derives saldo as uk_d − uk_p);
+    they are used here only to verify the file.
+    """
+    rows, subtotals, classes, ukupno = [], {}, {}, None
+    saldo_d_sum = saldo_p_sum = 0.0
+    saldo_mismatch = []
+    stray_lines = 0
+
+    for line in text.splitlines():
+        if COLHDR_RE.search(line):          # repeated page header
+            continue
+        vals, placed, stray = _columns_on_line(line, edges)
+        if not placed:
+            continue
+        if stray:
+            stray_lines += 1
+        tp_d, tp_p = vals[0], vals[1]
+        s_d, s_p = (vals[2], vals[3]) if len(vals) > 3 else (0.0, 0.0)
+
+        if line.strip().upper().startswith('UKUPNO'):
+            # pad onto the 8-slot legacy vector: ps, tp, uk, saldo
+            ukupno = [0.0, 0.0, tp_d, tp_p, tp_d, tp_p, s_d, s_p]
+            continue
+
+        km = KONTO_RE.match(line)
+        if not km:
+            continue
+        konto = km.group(1)
+        first_num = NUM_RE.search(line)
+        naziv = line[km.end():first_num.start()].strip() if first_num else ''
+        six = [0.0, 0.0, tp_d, tp_p, tp_d, tp_p]
+
+        if len(konto) == 1:
+            classes[konto] = six
+        elif len(konto) == 3 and not naziv:
+            # a 3-digit konto with no description is the synthetic subtotal.
+            # A 3-digit konto that HAS one (e.g. 499 Pasiv.vrem.razgran.) is a
+            # real analytic account and falls through to the branch below.
+            subtotals[konto] = six
+        else:
+            rows.append({'konto': konto, 'naziv': naziv or None,
+                         'ps_d': 0.0, 'ps_p': 0.0, 'tp_d': tp_d, 'tp_p': tp_p,
+                         'uk_d': tp_d, 'uk_p': tp_p})
+            saldo_d_sum += s_d
+            saldo_p_sum += s_p
+            if abs((tp_d - tp_p) - (s_d - s_p)) > 0.5:
+                saldo_mismatch.append(konto)
+
+    extra = {'saldo_d': saldo_d_sum, 'saldo_p': saldo_p_sum,
+             'saldo_mismatch': saldo_mismatch, 'stray_lines': stray_lines,
+             'ukupno_saldo': (ukupno[6], ukupno[7]) if ukupno else None}
+    return text[:3000], rows, subtotals, classes, ukupno, LAYOUT_TP_SALDO, extra
+
+
+def _parse_pdf(path):
+    text = _pdf_text(path)
+    edges = _column_edges(text)
+    # Layout B has exactly two DUGUJE/POTRAŽUJE pairs (promet + saldo).
+    # Layout A has more column groups, or no such header at all.
+    if len(edges) == 4:
+        head, rows, subs, classes, ukupno, layout, extra = _parse_pdf_tp_saldo(text, edges)
+        if len(rows) > 20:
+            return head, rows, subs, classes, ukupno, layout, extra
+        # column reading found almost nothing — fall back rather than fail
+    return _parse_pdf_legacy(text)
 
 
 # ── XLSX ─────────────────────────────────────────────────────────────
@@ -126,7 +259,7 @@ def _parse_xlsx(path):
                 subtotals[k] = [row[c] for c in ('ps_d', 'ps_p', 'tp_d', 'tp_p', 'uk_d', 'uk_p')]
                 continue
         out.append(row)
-    return head, out, subtotals, classes, ukupno
+    return head, out, subtotals, classes, ukupno, 'XLSX', {}
 
 
 # ── validation ───────────────────────────────────────────────────────
@@ -141,11 +274,11 @@ def _close(a, b, tol=1.0):
 def parse_file(path):
     ext = path.lower().rsplit('.', 1)[-1]
     if ext == 'pdf':
-        head, rows, subtotals, classes, ukupno = _parse_pdf(path)
-        fmt = 'PDF'
+        head, rows, subtotals, classes, ukupno, layout, extra = _parse_pdf(path)
+        fmt = layout
     elif ext in ('xlsx', 'xlsm'):
-        head, rows, subtotals, classes, ukupno = _parse_xlsx(path)
-        fmt = 'XLSX'
+        head, rows, subtotals, classes, ukupno, layout, extra = _parse_xlsx(path)
+        fmt = layout
     else:
         raise RuntimeError('Podržani formati: PDF, XLSX.')
 
@@ -188,6 +321,38 @@ def parse_file(path):
             bad_sub.append(k)
     if bad_sub:
         warnings.append(('Sintetička konta sa odstupanjem: {a0}', {'a0': ', '.join(bad_sub[:15])}))
+
+    # ── layout B only ────────────────────────────────────────────────
+    if fmt == LAYOUT_TP_SALDO:
+        mism = extra.get('saldo_mismatch') or []
+        if mism:
+            _detail, _dargs = ('{a0} konta odstupa: {a1}',
+                               {'a0': len(mism), 'a1': ', '.join(mism[:10])})
+        else:
+            _detail, _dargs = ('svi redovi', {})
+        checks.append({
+            'name': 'Saldo = promet (D − P)',
+            'ok': not mism,
+            'detail': _detail,
+            'args': _dargs,
+        })
+        uk_s = extra.get('ukupno_saldo')
+        if uk_s:
+            checks.append({
+                'name': 'Zbir salda = UKUPNO saldo',
+                'ok': _close(extra['saldo_d'], uk_s[0], 5) and _close(extra['saldo_p'], uk_s[1], 5),
+                'detail': 'D {a0} / {a1} · P {a2} / {a3}',
+                'args': {'a0': _sr(extra['saldo_d']), 'a1': _sr(uk_s[0]),
+                         'a2': _sr(extra['saldo_p']), 'a3': _sr(uk_s[1])},
+            })
+        if extra.get('stray_lines'):
+            warnings.append(('{a0} redova sa brojem van kolone — proverite raspored u PDF-u.',
+                             {'a0': extra['stray_lines']}))
+        warnings.append(
+            ('Format bez početnog stanja: kolone su tekući promet i saldo, pa je početno '
+             'stanje upisano kao nula. Period počinje 1. januara, tako da bilans stanja i '
+             'bilans uspeha nisu pogođeni, ali Tokovi gotovine za ovaj snimak nemaju '
+             'početnu kolonu.', {}))
 
     is_closing = any(r['konto'].startswith('7') or r['konto'][:3] in CLOSING_KONTOS for r in rows)
     if is_closing:

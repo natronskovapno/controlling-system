@@ -353,7 +353,8 @@ def _get_data_gaps(db):
             if days_since > 3:
                 gaps.append({
                     "source": "POS",
-                    "description": f"Poslednji bill: {last_bill} ({days_since} dana bez podataka)",
+                    "description": tr("Poslednji bill: {last} ({n} dana bez podataka)",
+                                      last=last_bill, n=days_since),
                     "severity": "warning" if days_since < 7 else "error",
                 })
     except Exception:
