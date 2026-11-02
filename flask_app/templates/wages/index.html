@@ -7,6 +7,10 @@
   {%- else -%}—{%- endif -%}
 {% endmacro %}
 
+{% macro faktor(val) %}
+  {%- if val -%}{{ ("%.4f"|format(val)).replace(".", ",") }}{%- else -%}—{%- endif -%}
+{% endmacro %}
+
 {% block content %}
 
 <div class="page-header">
@@ -51,12 +55,47 @@
 ══════════════════════════════════════════════════════════════════ #}
 {% if tab == 'stalni' %}
 
+{# ── Sync warning ────────────────────────────────────────────────── #}
+{% if sync and sync.dirty %}
+<div style="padding:12px 16px;border-radius:var(--r-md);border-left:3px solid var(--accent);
+            background:var(--accent-bg);color:var(--accent);font-size:.84rem;margin-bottom:20px;">
+  <strong>{{ tr('Izmene nisu prenete u fiksne troškove.') }}</strong>
+  {% if sync.updated_at %}<span style="font-weight:400;color:var(--ink-muted);">poslednja akcija {{ sync.updated_at }}</span>{% endif %}
+  {% if sync.from_month %} {{ tr('Pogođeni meseci počinju od {m}.', m=sync.from_month) }}{% endif %}
+  <div style="margin-top:10px;display:flex;gap:0;align-items:center;flex-wrap:wrap;">
+    <form method="post" action="{{ url_for('wages.stalni_sync') }}"
+        class="sync-form" style="display:inline-block;margin:0;">
+    <input type="hidden" name="mode" value="full">
+    <button type="submit" class="btn btn-primary btn-sm" style="padding:4px 12px;">
+      &#8635; {{ tr('Sinhronizuj sada') }}
+    </button>
+  </form>
+  <form method="post" action="{{ url_for('wages.stalni_sync') }}"
+        class="sync-form" style="display:inline-block;margin:0 0 0 6px;">
+    <input type="hidden" name="mode" value="dry">
+    <button type="submit" class="btn btn-ghost btn-sm" style="padding:4px 12px;">
+      {{ tr('Proba (bez upisa)') }}
+    </button>
+  </form>
+  </div>
+  <div style="margin-top:6px;color:var(--ink-muted);font-size:.76rem;">
+    {{ tr('Jedno dugme radi oba koraka: alokaciju plata u fiksne troškove, pa preračun Daily Loga. Traje nekoliko sekundi.') }}
+  </div>
+  {% if sync.rows %}
+  <div style="margin-top:8px;color:var(--ink-muted);font-size:.78rem;">
+    Izmenjeni periodi:
+    {% for d in sync.rows %}{{ d.employee_name }} ({{ d.valid_from }}{% if d.valid_to %} – {{ d.valid_to }}{% endif %}){% if not loop.last %}, {% endif %}{% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 {# KPI cards #}
 <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:28px;">
   <div class="kpi-card kpi-card--accent">
     <div class="kpi-card__label">{{ tr('Stalno zaposlenih') }}</div>
-    <div class="kpi-card__value" style="font-size:1.9rem;">{{ employees|length }}</div>
-    <div class="kpi-card__sub">{{ tr('aktivnih zaposlenih') }}</div>
+    <div class="kpi-card__value" style="font-size:1.9rem;">{{ employees|rejectattr('is_ended')|list|length }}</div>
+    <div class="kpi-card__sub">{{ tr('{n} ukupno u evidenciji', n=employees|length) }}</div>
   </div>
   <div class="kpi-card kpi-card--blue">
     <div class="kpi-card__label">{{ tr('Ukupno neto / mesec') }}</div>
@@ -71,9 +110,42 @@
 </div>
 
 <div class="card" style="margin-bottom:20px;">
-  <div class="card-header"><span class="card-title">{{ tr('Kako funkcioniše') }}</span></div>
+  <div class="card-header">
+    <span class="card-title">{{ tr('Kako funkcioniše') }}</span>
+    <div style="display:flex;align-items:center;">
+      <form method="post" action="{{ url_for('wages.stalni_sync') }}"
+        class="sync-form" style="display:inline-block;margin:0;">
+    <input type="hidden" name="mode" value="full">
+    <button type="submit" class="btn btn-primary btn-sm" style="padding:4px 12px;">
+      &#8635; {{ tr('Sinhronizuj sada') }}
+    </button>
+  </form>
+  <form method="post" action="{{ url_for('wages.stalni_sync') }}"
+        class="sync-form" style="display:inline-block;margin:0 0 0 6px;">
+    <input type="hidden" name="mode" value="dry">
+    <button type="submit" class="btn btn-ghost btn-sm" style="padding:4px 12px;">
+      {{ tr('Proba (bez upisa)') }}
+    </button>
+  </form>
+    </div>
+  </div>
   <div style="padding:14px 20px;font-size:.83rem;color:var(--ink-muted);line-height:1.6;">
-    {{ tr('Unesite') }} <strong>{{ tr('novu platu') }}</strong>{{ tr("sa datumom početka primene. Sistem će automatski zatvoriti prethodnu platu danom pre nove. Svaka izmena plate ostaje sačuvana u istoriji, omogućavajući vam da pratite sve promene plata kroz vreme. Kada dodate novog zaposlenog, njegova početna plata postaje aktivna odmah.") }}</div>
+    {{ tr('Unesite') }} <strong>{{ tr('novu platu') }}</strong> {{ tr('sa datumom početka primene — sistem zatvara prethodnu platu danom pre nove.') }}
+    <strong>{{ tr('Svaki period, uključujući i istorijske, može se naknadno izmeniti') }}</strong> {{ tr('— neto, bruto i oba datuma.') }}
+    {{ tr('Faktor se ne unosi: računa se kao bruto ÷ neto i služi za proveru.') }}
+    {{ tr('Izmene se') }} <strong>{{ tr('ne prenose automatski') }}</strong> {{ tr('u fiksne troškove i Daily Log — prenos pokrećete dugmetom') }} <strong>{{ tr('Sinhronizuj sada') }}</strong> {{ tr('kada završite ispravke.') }}
+  </div>
+  {% if sync and sync.detail %}
+  <details style="border-top:1px solid var(--border-soft);">
+    <summary style="padding:8px 20px;cursor:pointer;font-size:.72rem;font-weight:600;
+                    color:var(--ink-muted);text-transform:uppercase;letter-spacing:.05em;">
+      {{ tr('Prikaži detalje poslednjeg pokretanja') }}
+    </summary>
+    <pre style="margin:0;padding:10px 20px 16px;font-size:.74rem;line-height:1.55;
+                white-space:pre-wrap;word-break:break-word;color:var(--ink);
+                background:var(--canvas-warm);">{{ sync.detail }}</pre>
+  </details>
+  {% endif %}
 </div>
 
 {# Employee Cards Grid #}
@@ -82,22 +154,69 @@
 <div class="card">
   <div class="card-header">
     <span class="card-title">{{ emp.employee_name }}</span>
-    <div style="display:flex;gap:6px;align-items:center;">
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
       {% if emp.role %}
         <span class="badge badge-gray" style="font-size:.72rem;">{{ emp.role }}</span>
+      {% endif %}
+      {% if emp.is_ended %}
+        <span class="badge badge-red" style="font-size:.72rem;">{{ tr('završen') }}{% if emp.ended_on %} {{ emp.ended_on }}{% endif %}</span>
+      {% endif %}
+      {% if emp.needs_sync %}
+        <span class="badge badge-amber" style="font-size:.72rem;">{{ tr('nije sinhronizovano') }}</span>
       {% endif %}
       <span class="badge badge-green" style="font-size:.72rem;">{{ emp.periods|length }} {{ tr('perioda') if emp.periods|length > 1 else tr('period') }}</span>
     </div>
   </div>
-  
+
   {# Summary bar #}
   <div style="padding:10px 16px;border-bottom:1px solid var(--border-soft);">
     <div style="display:flex;gap:20px;font-size:.82rem;flex-wrap:wrap;">
       <div><span style="color:var(--ink-muted);">{{ tr('Trenutna neto:') }}</span> <strong>{{ money(emp.current_net) }} RSD</strong></div>
       <div><span style="color:var(--ink-muted);">{{ tr('Bruto trošak:') }}</span> <strong style="color:var(--red);">{{ money(emp.current_gross) }} RSD</strong></div>
-      <div><span style="color:var(--ink-muted);">{{ tr("Istorija:") }}</span> <strong>{{ emp.periods|length }} {{ 'period' if emp.periods|length == 1 else 'perioda' }}</strong></div>
+      <div><span style="color:var(--ink-muted);">{{ tr('Faktor:') }}</span> <strong>{{ faktor(emp.current_factor) }}</strong></div>
     </div>
   </div>
+
+  {# Employee-level: rename / role / end employment #}
+  <details style="border-bottom:1px solid var(--border-soft);">
+    <summary style="padding:8px 16px;cursor:pointer;font-size:.72rem;font-weight:600;color:var(--ink-muted);
+                    text-transform:uppercase;letter-spacing:.05em;">{{ tr('Ime, uloga i radni odnos') }}</summary>
+    <div style="padding:4px 16px 12px;">
+      <form method="post" action="{{ url_for('wages.stalni_rename') }}"
+            style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px;">
+        <input type="hidden" name="old_name" value="{{ emp.employee_name }}">
+        <div>
+          <label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:2px;">{{ tr('Ime i prezime') }}</label>
+          <input type="text" name="employee_name" value="{{ emp.employee_name }}" required
+                 style="font-size:.82rem;padding:5px 8px;width:170px;">
+        </div>
+        <div>
+          <label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:2px;">{{ tr('Uloga') }}</label>
+          <input type="text" name="role" value="{{ emp.role or '' }}"
+                 style="font-size:.82rem;padding:5px 8px;width:120px;">
+        </div>
+        <button type="submit" class="btn btn-secondary btn-sm" style="padding:5px 12px;">{{ tr('Sačuvaj') }}</button>
+      </form>
+      {% if emp.is_ended %}
+        {% set last = emp.periods|first %}
+        <form method="post" action="{{ url_for('wages.stalni_reopen', salary_id=last.id) }}"
+              onsubmit="return confirm({{ tr('Ponovo aktivirati poslednji period za {n}?', n=emp.employee_name)|tojson }})">
+          <button type="submit" class="btn btn-ghost btn-sm" style="padding:5px 12px;">↩ {{ tr('Poništi prestanak radnog odnosa') }}</button>
+        </form>
+      {% else %}
+        <form method="post" action="{{ url_for('wages.stalni_end') }}"
+              style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;"
+              onsubmit="return confirm({{ tr('Završiti radni odnos za {n}?', n=emp.employee_name)|tojson }})">
+          <input type="hidden" name="employee_name" value="{{ emp.employee_name }}">
+          <div>
+            <label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:2px;">{{ tr('Prestanak radnog odnosa') }}</label>
+            <input type="date" name="end_date" required style="font-size:.82rem;padding:5px 8px;">
+          </div>
+          <button type="submit" class="btn btn-ghost btn-sm" style="padding:5px 12px;color:var(--red);">{{ tr('Završi') }}</button>
+        </form>
+      {% endif %}
+    </div>
+  </details>
 
   {# Add new salary period form #}
   <div style="padding:12px 16px;border-bottom:1px solid var(--border-soft);">
@@ -110,15 +229,16 @@
         <div>
           <label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:2px;">{{ tr('Neto (RSD)') }}</label>
           <input type="number" name="monthly_net" min="0" step="0.01"
+                 class="sal-new-net" data-target="gross_{{ emp.employee_name|replace(' ', '_') }}"
+                 data-factor="{{ emp.last_factor or '' }}"
                  placeholder="{{ tr('npr. 100000') }}"
-                 style="font-size:.88rem;padding:5px 10px;width:110px;font-weight:600;"
-                 oninput="estimateGross_{{ loop.index }}(this)">
+                 style="font-size:.88rem;padding:5px 10px;width:110px;font-weight:600;">
         </div>
         <div>
           <label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:2px;">{{ tr('Bruto (RSD)') }}</label>
           <input type="number" name="monthly_gross" min="0" step="0.01"
-                 placeholder="{{ tr('×1.76 auto') }}"
-                 id="gross_{{ loop.index }}"
+                 id="gross_{{ emp.employee_name|replace(' ', '_') }}"
+                 placeholder="{% if emp.last_factor %}×{{ faktor(emp.last_factor) }}{% else %}unesite bruto{% endif %}"
                  style="font-size:.82rem;padding:5px 8px;width:110px;">
         </div>
         <div>
@@ -126,22 +246,30 @@
           <input type="date" name="valid_from" required
                  style="font-size:.82rem;padding:5px 8px;">
         </div>
+        <div>
+          <label style="font-size:.72rem;color:var(--ink-muted);display:block;margin-bottom:2px;">{{ tr('Važi do') }} <span style="font-weight:400;">({{ tr('opciono') }})</span></label>
+          <input type="date" name="valid_to" title="{{ tr('Ostavite prazno za tekuću platu. Popunite kada dodajete istorijski period.') }}"
+                 style="font-size:.82rem;padding:5px 8px;">
+        </div>
         <button type="submit" class="btn btn-primary btn-sm" style="padding:5px 14px;">{{ tr('+ Dodaj') }}</button>
       </div>
     </form>
   </div>
 
-  {# Salary history table #}
+  {# Salary history — every row editable #}
   {% if emp.periods %}
   <div style="padding:10px 16px;">
     <div style="font-size:.72rem;font-weight:600;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">
-      {{ tr('Istorija stopa') }}
+      {{ tr('Istorija plata — sve izmenjivo') }}
     </div>
-    <table class="data-table" style="font-size:.8rem;">
+    <table class="data-table" style="font-size:.78rem;">
       <thead>
         <tr>
-          <th>{{ tr('Stopa') }}</th>
-          <th>{{ tr('Važi od') }}</th>
+          <th style="min-width:92px;">{{ tr('Neto') }}</th>
+          <th style="min-width:92px;">{{ tr('Bruto') }}</th>
+          <th>{{ tr('Faktor') }}</th>
+          <th style="min-width:118px;">{{ tr('Važi od') }}</th>
+          <th style="min-width:118px;">{{ tr('Važi do') }}</th>
           <th></th>
         </tr>
       </thead>
@@ -149,23 +277,37 @@
         {% for period in emp.periods %}
         <tr {% if period.is_active %}style="background:#e8f5e9;"{% endif %}>
           <td>
-            <div style="font-weight:600;">{{ money(period.monthly_net) }} RSD</div>
-            <div style="font-size:.72rem;color:var(--ink-muted);">{{ tr('bruto:') }} {{ money(period.monthly_gross) }}</div>
+            <input form="sf{{ period.id }}" type="number" name="monthly_net" min="0" step="0.01"
+                   value="{{ period.monthly_net or 0 }}" class="sal-edit" data-row="{{ period.id }}" data-kind="net"
+                   style="font-size:.78rem;padding:3px 6px;width:88px;font-weight:600;">
           </td>
           <td>
-            <div>{{ period.valid_from }}</div>
-            {% if period.valid_to %}
-              <div style="font-size:.72rem;color:var(--ink-muted);">do {{ period.valid_to }}</div>
-            {% else %}
-              <span class="badge badge-green" style="font-size:.68rem;">{{ tr("aktivna") }}</span>
-            {% endif %}
+            <input form="sf{{ period.id }}" type="number" name="monthly_gross" min="0" step="0.01"
+                   value="{{ period.monthly_gross or 0 }}" class="sal-edit" data-row="{{ period.id }}" data-kind="gross"
+                   style="font-size:.78rem;padding:3px 6px;width:88px;">
+          </td>
+          <td id="fac{{ period.id }}" style="color:var(--ink-muted);white-space:nowrap;">{{ faktor(period.factor) }}</td>
+          <td>
+            <input form="sf{{ period.id }}" type="date" name="valid_from" value="{{ period.valid_from }}" required
+                   style="font-size:.76rem;padding:3px 5px;">
           </td>
           <td>
+            <input form="sf{{ period.id }}" type="date" name="valid_to" value="{{ period.valid_to or '' }}"
+                   style="font-size:.76rem;padding:3px 5px;">
+            {% if period.is_active %}<span class="badge badge-green" style="font-size:.66rem;">{{ tr('aktivna') }}</span>{% endif %}
+          </td>
+          <td style="white-space:nowrap;">
+            <form id="sf{{ period.id }}" method="post"
+                  action="{{ url_for('wages.stalni_edit', salary_id=period.id) }}" style="display:none;"></form>
+            <button type="submit" form="sf{{ period.id }}" class="btn btn-secondary btn-sm"
+                    style="font-size:.72rem;padding:3px 8px;" title="{{ tr('Sačuvaj izmene') }}">✓</button>
             <form method="post" action="{{ url_for('wages.stalni_delete', salary_id=period.id) }}"
-                  style="display:inline;" onsubmit="return confirm('Obriši ovaj period plate?')">
+                  style="display:inline;"
+                  onsubmit="return confirm({{ (tr('Obrisati ovaj period plate?') + (' ' + tr('Prethodni period će ponovo postati aktivan.') if period.is_active else ''))|tojson }})">
               <button type="submit" class="btn btn-ghost btn-sm"
-                      style="font-size:.72rem;color:var(--red);">×</button>
+                      style="font-size:.72rem;color:var(--red);" title="{{ tr('Obriši period') }}">×</button>
             </form>
+            {% if period.needs_sync %}<span class="badge badge-amber" style="font-size:.62rem;">{{ tr('nije sinh.') }}</span>{% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -198,19 +340,18 @@
           <div>
             <label style="font-size:.75rem;color:var(--ink-muted);display:block;margin-bottom:4px;">{{ tr('Neto (RSD) *') }}</label>
             <input type="number" name="monthly_net" step="0.01" min="0" placeholder="80000" required
-                   oninput="estimateGrossNew(this)"
                    style="width:100%;padding:6px 10px;">
           </div>
           <div>
             <label style="font-size:.75rem;color:var(--ink-muted);display:block;margin-bottom:4px;">{{ tr('Bruto (RSD)') }}</label>
             <input type="number" name="monthly_gross" step="0.01" min="0" id="gross-new"
-                   placeholder="{{ tr('×1.76 auto') }}"
+                   placeholder="unesite bruto"
                    style="width:100%;padding:6px 10px;">
           </div>
         </div>
         <div>
           <label style="font-size:.75rem;color:var(--ink-muted);display:block;margin-bottom:4px;">{{ tr('Datum početka') }}</label>
-          <input type="date" name="valid_from"
+          <input type="date" name="valid_from" value="{{ today }}"
                  style="width:100%;padding:6px 10px;">
         </div>
         <button type="submit" class="btn btn-primary" style="width:100%;">{{ tr('+ Dodaj zaposlenog') }}</button>
@@ -231,13 +372,17 @@
     <span class="card-title">{{ tr('Kako funkcioniše') }}</span>
     <form method="post" action="{{ url_for('wages.zaposleni_recalc_all') }}" style="display:inline;">
       <button class="btn btn-ghost btn-sm"
-              onclick="return confirm('Preračunaj bruto za sve zaposlene koji imaju definisanu stopu?')">
+              onclick="return confirm({{ tr('Preračunaj bruto za sve zaposlene koji imaju definisanu stopu?')|tojson }})">
         {{ tr('↻ Preračunaj sve bruto troškove') }}
       </button>
     </form>
   </div>
   <div style="padding:14px 20px;font-size:.83rem;color:var(--ink-muted);line-height:1.6;">
-    {{ tr('Unesite') }} <strong>{{ tr('ukupnu stopu doprinosa') }}</strong> {{ tr('kao procenat neto zarade (npr.') }} <strong>29</strong> {{ tr('za ukupno 29% ili') }} <strong>76</strong>{{ tr("za 76%). Bruto trošak = Neto × (1 + stopa / 100). Svaka stopa važi od datuma koji unesete — starije stope ostaju nepromenjene i primenjuju se na istorijske podatke. Ako zaposleni promeni kategoriju, dodajte novu stopu sa novim datumom.") }}</div>
+    {{ tr('Unesite') }} <strong>{{ tr('ukupnu stopu doprinosa') }}</strong> {{ tr('kao procenat neto zarade (npr.') }} <strong>29</strong> {{ tr('za ukupno 29% ili') }} <strong>76</strong> {{ tr('za 76%).') }}
+    {{ tr('Bruto trošak = Neto × (1 + stopa / 100).') }}
+    {{ tr('Svaka stopa važi od datuma koji unesete — starije stope ostaju nepromenjene i primenjuju se na istorijske podatke.') }}
+    Ako zaposleni promeni kategoriju, dodajte novu stopu sa novim datumom.
+  </div>
 </div>
 
 {# Employee Cards Grid #}
@@ -325,7 +470,7 @@
           <td style="color:var(--ink-muted);">{{ h.notes or '—' }}</td>
           <td>
             <form method="post" action="{{ url_for('wages.zaposleni_delete_bracket', bracket_id=h.id) }}"
-                  style="display:inline;" onsubmit="return confirm('Obriši ovu stopu?')">
+                  style="display:inline;" onsubmit="return confirm({{ tr('Obriši ovu stopu?')|tojson }})">
               <button type="submit" class="btn btn-ghost btn-sm"
                       style="font-size:.72rem;color:var(--red);">×</button>
             </form>
@@ -585,32 +730,44 @@
 
 {% block scripts %}
 <script>
-// Estimate gross for each employee's add form
-{% for emp in employees %}
-function estimateGross_{{ loop.index }}(netInput) {
-  const net = parseFloat(netInput.value) || 0;
-  const grossField = document.getElementById('gross_{{ loop.index }}');
-  if (grossField && !grossField.dataset.manuallySet) {
-    grossField.placeholder = '×1.76 ≈ ' + Math.round(net * 1.76).toLocaleString('sr-RS');
+// ── Stalni zaposleni: live factor in the editable history rows ──────
+(function () {
+  function recalcRow(id) {
+    var net   = document.querySelector('input[data-row="' + id + '"][data-kind="net"]');
+    var gross = document.querySelector('input[data-row="' + id + '"][data-kind="gross"]');
+    var cell  = document.getElementById('fac' + id);
+    if (!net || !gross || !cell) return;
+    var n = parseFloat(net.value) || 0;
+    var g = parseFloat(gross.value) || 0;
+    cell.textContent = (n > 0 && g > 0) ? (g / n).toFixed(4).replace('.', ',') : '—';
   }
-}
+  document.querySelectorAll('.sal-edit').forEach(function (el) {
+    el.addEventListener('input', function () { recalcRow(el.dataset.row); });
+  });
 
-document.getElementById('gross_{{ loop.index }}')?.addEventListener('input', function() {
-  this.dataset.manuallySet = this.value ? '1' : '';
-});
-{% endfor %}
+  // ── New period: prefill gross from that employee's last factor ─────
+  document.querySelectorAll('.sal-new-net').forEach(function (el) {
+    var target = document.getElementById(el.dataset.target);
+    if (!target) return;
+    target.addEventListener('input', function () { target.dataset.touched = target.value ? '1' : ''; });
+    el.addEventListener('input', function () {
+      var f = parseFloat(el.dataset.factor);
+      var n = parseFloat(el.value);
+      if (!f || !n || target.dataset.touched) return;
+      target.value = Math.round(n * f);
+    });
+  });
 
-// Estimate gross for new employee form
-function estimateGrossNew(netInput) {
-  const net = parseFloat(netInput.value) || 0;
-  const grossField = document.getElementById('gross-new');
-  if (grossField && !grossField.dataset.manuallySet) {
-    grossField.placeholder = '×1.76 ≈ ' + Math.round(net * 1.76).toLocaleString('sr-RS');
-  }
-}
-
-document.getElementById('gross-new')?.addEventListener('input', function() {
-  this.dataset.manuallySet = this.value ? '1' : '';
-});
+  // ── Sync buttons: one run at a time ────────────────────────────
+  document.querySelectorAll('form.sync-form').forEach(function (f) {
+    f.addEventListener('submit', function () {
+      document.querySelectorAll('form.sync-form button').forEach(function (b) {
+        b.disabled = true;
+      });
+      var own = f.querySelector('button');
+      if (own) own.textContent = 'Radim\u2026';
+    });
+  });
+})();
 </script>
 {% endblock %}
