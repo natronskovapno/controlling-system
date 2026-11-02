@@ -5,7 +5,7 @@
 <div class="page-header">
   <div class="page-header__left">
     <h1 class="page-title">{{ tr('Bruto bilans') }} {{ s.period_from }} → {{ s.period_to }}</h1>
-    <p class="page-subtitle">{{ s.company or '—' }} · {{ s.fmt }} · {{ s.source_file }} {{ tr("· uvezeno") }} {{ s.imported_at }}
+    <p class="page-subtitle">{{ s.company or '—' }} · {{ tr(s.fmt) }} · {{ s.source_file }} {{ tr("· uvezeno") }} {{ s.imported_at }}
       {% if s.is_closing %}· <span class="badge badge-blue">{{ tr('Zaključni') }}</span>{% endif %}</p>
   </div>
   <div class="page-header__actions">

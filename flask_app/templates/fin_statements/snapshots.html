@@ -30,7 +30,7 @@
         <tr>
           <td><a href="{{ url_for('fin_statements.snapshot_detail', snapshot_id=s.id) }}"><strong>{{ s.period_from }} → {{ s.period_to }}</strong></a></td>
           <td>{% if s.is_closing %}<span class="badge badge-blue">{{ tr('Zaključni') }}</span>{% else %}<span class="badge badge-amber">{{ tr('Presek') }}</span>{% endif %}</td>
-          <td>{{ s.fmt }}</td>
+          <td>{{ tr(s.fmt) }}</td>
           <td class="text-muted">{{ s.source_file }}</td>
           <td class="text-right">{{ s.line_count }}</td>
           <td>{{ check_badge(s.checks_ok) }}{% if s.warnings %} <span class="text-muted" title="{{ s.warnings|map('string')|join(' | ') }}">({{ s.warnings|length }} {{ tr("nap.)") }}</span>{% endif %}</td>

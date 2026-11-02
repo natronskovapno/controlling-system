@@ -6,7 +6,7 @@
   <div class="page-header__left">
     <h1 class="page-title">{{ tr("Pregled —") }} {{ m.source_file }}</h1>
     <p class="page-subtitle">
-      {{ m.company or '—' }} {{ tr("· PIB") }} {{ m.pib or '—' }} · {{ m.fmt }} ·
+      {{ m.company or '—' }} {{ tr("· PIB") }} {{ m.pib or '—' }} · {{ tr(m.fmt) }} ·
       {{ tr('period') }} <strong>{{ m.period_from }} → {{ m.period_to }}</strong>
       {% if m.is_closing %}· <span class="badge badge-blue">{{ tr('Zaključni') }}</span>{% endif %}
     </p>
