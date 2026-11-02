@@ -329,7 +329,7 @@
                style="width:13px;height:13px;flex-shrink:0;">
             <path d="M8 1v9M4 6l4 4 4-4M2 12h12"/>
           </svg>
-          <span id="dump-label">{{ tr('Dump za Claude') }}</span>
+          <span id="dump-label">{{ tr('Export za analizu') }}</span>
         </button>
         <div id="dump-status" style="font-size:.7rem;text-align:center;margin-top:5px;
              color:var(--ink-muted);min-height:14px;"></div>
@@ -377,24 +377,27 @@
       label.textContent = "Dump u toku...";
       status.textContent = "";
 
+      const IDLE_LABEL = {{ tr('Export za analizu')|tojson }};
+      const ERR_TEXT  = {{ tr('Greška')|tojson }};
+
       fetch("/api/db-dump", { method: "POST" })
         .then(r => r.json())
         .then(data => {
           if (data.ok) {
-            label.textContent = "Dump za Claude";
-            status.textContent = data.tables + " tabela, " + data.duration + "s";
+            label.textContent = IDLE_LABEL;
+            status.textContent = data.tables + {{ tr(' tabela, ')|tojson }} + data.duration + "s";
             status.style.color = "var(--green)";
           } else {
-            label.textContent = "Dump za Claude";
-            status.textContent = "✗ " + (data.error || "Greška");
+            label.textContent = IDLE_LABEL;
+            status.textContent = "✗ " + (data.error || ERR_TEXT);
             status.style.color = "var(--red)";
           }
           btn.disabled = false;
           setTimeout(() => { status.textContent = ""; status.style.color = "var(--ink-muted)"; }, 8000);
         })
         .catch(e => {
-          label.textContent = "Dump za Claude";
-          status.textContent = "✗ Greška";
+          label.textContent = IDLE_LABEL;
+          status.textContent = "✗ " + ERR_TEXT;
           status.style.color = "var(--red)";
           btn.disabled = false;
         });
