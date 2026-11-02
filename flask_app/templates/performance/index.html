@@ -3,11 +3,21 @@
 
 {# ── macros ─────────────────────────────────────────────────────────── #}
 {% macro fmt(val) -%}
-  {%- if val is not none and val != 0 -%}{{ "{:,.0f}".format(val).replace(",",".") }}{%- else -%}—{%- endif -%}
+  {%- if val is not none and val != 0 -%}{{ "{:,.0f}".format(val).replace(",",".").replace("-","−") }}{%- else -%}—{%- endif -%}
 {%- endmacro %}
 
 {% macro fmt0(val) -%}
-  {%- if val is not none -%}{{ "{:,.0f}".format(val).replace(",",".") }}{%- else -%}—{%- endif -%}
+  {%- if val is not none -%}{{ "{:,.0f}".format(val).replace(",",".").replace("-","−") }}{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{# A cost held in the data as a POSITIVE number, rendered as the deduction it is. #}
+{% macro cost(val) -%}
+  {%- if val is not none and val != 0 -%}−{{ "{:,.0f}".format(val|abs).replace(",",".") }}{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{# A value that already carries its own sign (allocated fixed costs are negative). #}
+{% macro signed(val) -%}
+  {%- if val is not none and val != 0 -%}{{ "{:,.0f}".format(val).replace(",",".").replace("-","−") }}{%- else -%}—{%- endif -%}
 {%- endmacro %}
 
 {% macro pct(val) -%}
@@ -17,7 +27,7 @@
 {% macro profit_val(val) %}
   {%- if val is not none -%}
     <span style="color:{% if val >= 0 %}var(--green){% else %}var(--red){% endif %};font-weight:600;">
-      {{ "{:,.0f}".format(val).replace(",",".") }}
+      {{ "{:,.0f}".format(val).replace(",",".").replace("-","−") }}
     </span>
   {%- else -%}<span style="color:var(--ink-muted);">—</span>{%- endif -%}
 {% endmacro %}
@@ -42,11 +52,32 @@
 {# Venue badge colour #}
 {% macro vbadge(v) %}badge-{% if v|lower == 'garden' %}blue{% elif v|lower == 'corner' %}amber{% else %}gray{% endif %}{% endmacro %}
 
+{# A dash in the venue columns: this row belongs to no venue. #}
+{% macro nocell() %}<td style="text-align:right;padding:4px 10px;color:var(--ink-ghost);">—</td>{% endmacro %}
+
 {# ── venue split 3-column table macro ──────────────────────────────── #}
-{% macro venue_split_table(split, standalone={}, total_net=none, show_fiksni=true) %}
+{#
+   Reading order, and why:
+     PRIHODI                 per venue
+     VARIJABILNI TROŠKOVI    per venue, every figure a deduction
+     REZULTAT LOKALA         bruto + fiksni, with the Garden+Corner subtotal spelled out
+     DODATNI PRIHODI I TROŠKOVI   company level — venue cells dashed out
+     NETO PROFIT — FIRMA     the two results added
+
+   The venue columns deliberately do not sum to the Ukupno column on the
+   dodatni rows. That used to be invisible; the dashes and the two subtotals
+   now make it legible without a footnote.
+#}
+{% macro venue_split_table(split, standalone={}, detail={}, total_net=none,
+                           venue_result=none, standalone_total=0, show_fiksni=true) %}
 {% set Garden = split.Garden %}
 {% set Corner = split.Corner %}
 {% set total = split.total %}
+{% set pl_result = (Garden.gross_profit if not show_fiksni else Garden.net_profit) if Garden else none %}
+{% set ko_result = (Corner.gross_profit if not show_fiksni else Corner.net_profit) if Corner else none %}
+{% set to_result = venue_result if venue_result is not none else (total.gross_profit if not show_fiksni else total.net_profit) %}
+{% set company_net = total_net if total_net is not none else to_result %}
+{% set has_extra = standalone and (standalone.values() | select('ne', none) | list | length) > 0 %}
 <div style="overflow-x:auto;">
 <table style="width:100%;border-collapse:collapse;font-size:.82rem;">
   <thead>
@@ -64,12 +95,13 @@
     </tr>
   </thead>
   <tbody>
-    {# Revenue section #}
+
+    {# ══ Revenue ══ #}
     <tr style="background:var(--surface-accent);">
       <td colspan="4" style="padding:4px 10px;font-size:.72rem;font-weight:600;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Prihodi') }}</td>
     </tr>
     <tr style="border-bottom:1px solid var(--border-soft);">
-      <td style="padding:4px 10px;color:var(--ink);font-weight:600;">{{ tr('Ukupni prihod') }}</td>
+      <td style="padding:4px 10px;color:var(--ink);font-weight:600;">Ukupan prihod</td>
       <td style="text-align:right;padding:4px 10px;font-weight:700;">{{ fmt0(Garden.total_revenue if Garden else none) }}</td>
       <td style="text-align:right;padding:4px 10px;font-weight:700;">{{ fmt0(Corner.total_revenue if Corner else none) }}</td>
       <td style="text-align:right;padding:4px 10px;font-weight:700;color:var(--ink);">{{ fmt0(total.total_revenue) }}</td>
@@ -82,99 +114,79 @@
     </tr>
     <tr style="border-bottom:1px solid var(--border-soft);">
       <td style="padding:3px 10px 3px 20px;color:var(--ink-muted);font-size:.8rem;">{{ tr('Kirija prostora') }}</td>
-      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt0(Garden.total_venue_rent if Garden else none) }}</td>
-      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt0(Corner.total_venue_rent if Corner else none) }}</td>
-      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt0(total.total_venue_rent) }}</td>
+      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt(Garden.total_venue_rent if Garden else none) }}</td>
+      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt(Corner.total_venue_rent if Corner else none) }}</td>
+      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt(total.total_venue_rent) }}</td>
     </tr>
     <tr style="border-bottom:1px solid var(--border-soft);">
       <td style="padding:3px 10px 3px 20px;color:var(--ink-muted);font-size:.8rem;">{{ tr('Karte (vlastite)') }}</td>
-      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt0(Garden.total_ticket_own if Garden else none) }}</td>
-      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt0(Corner.total_ticket_own if Corner else none) }}</td>
-      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt0(total.total_ticket_own) }}</td>
+      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt(Garden.total_ticket_own if Garden else none) }}</td>
+      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt(Corner.total_ticket_own if Corner else none) }}</td>
+      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt(total.total_ticket_own) }}</td>
     </tr>
     <tr style="border-bottom:1px solid var(--border-soft);">
-      <td style="padding:3px 10px 3px 20px;color:var(--ink-muted);font-size:.8rem;">{{ tr('Karte (3. strana)') }} <span style="font-size:.7rem;opacity:.7;">{{ tr('pass-through') }}</span></td>
-      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt0(Garden.total_third_party if Garden else none) }}</td>
-      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt0(Corner.total_third_party if Corner else none) }}</td>
-      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt0(total.total_third_party) }}</td>
+      <td style="padding:3px 10px 3px 20px;color:var(--ink-muted);font-size:.8rem;">{{ tr('Karte (3. strana)') }} <span style="font-size:.7rem;opacity:.7;">{{ tr('pass-through, odbitak') }}</span></td>
+      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ cost(Garden.total_third_party if Garden else none) }}</td>
+      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ cost(Corner.total_third_party if Corner else none) }}</td>
+      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ cost(total.total_third_party) }}</td>
     </tr>
     <tr style="border-bottom:2px solid var(--border-soft);">
       <td style="padding:3px 10px 3px 20px;color:var(--ink-muted);font-size:.8rem;">{{ tr('Ostali prihodi') }}</td>
-      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt0(Garden.total_other_rev if Garden else none) }}</td>
-      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt0(Corner.total_other_rev if Corner else none) }}</td>
-      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt0(total.total_other_rev) }}</td>
+      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt(Garden.total_other_rev if Garden else none) }}</td>
+      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt(Corner.total_other_rev if Corner else none) }}</td>
+      <td style="text-align:right;padding:3px 10px;color:var(--ink-muted);">{{ fmt(total.total_other_rev) }}</td>
     </tr>
 
-    {# Costs section #}
+    {# ══ Variable costs ══ #}
     <tr style="background:var(--surface-accent);">
-      <td colspan="4" style="padding:4px 10px;font-size:.72rem;font-weight:600;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Troškovi') }}</td>
+      <td colspan="4" style="padding:4px 10px;font-size:.72rem;font-weight:600;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Varijabilni troškovi') }}</td>
     </tr>
     <tr style="border-bottom:1px solid var(--border-soft);">
       <td style="padding:4px 10px;color:var(--ink-muted);">COGS</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ fmt0(Garden.total_cogs if Garden else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ fmt0(Corner.total_cogs if Corner else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ fmt0(total.total_cogs) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ cost(Garden.total_cogs if Garden else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ cost(Corner.total_cogs if Corner else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ cost(total.total_cogs) }}</td>
     </tr>
     <tr style="border-bottom:1px solid var(--border-soft);">
-      <td style="padding:4px 10px;color:var(--ink-muted);">{{ tr('Zarade (konobar)') }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ fmt0(Garden.total_wages if Garden else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ fmt0(Corner.total_wages if Corner else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ fmt0(total.total_wages) }}</td>
+      <td style="padding:4px 10px;color:var(--ink-muted);">{{ tr('Zarade (konobari)') }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ cost(Garden.total_wages if Garden else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ cost(Corner.total_wages if Corner else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ cost(total.total_wages) }}</td>
     </tr>
     <tr style="border-bottom:1px solid var(--border-soft);">
       <td style="padding:4px 10px;color:var(--ink-muted);">{{ tr("Fizikalci") }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ fmt0(Garden.total_laborers if Garden else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ fmt0(Corner.total_laborers if Corner else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ fmt0(total.total_laborers) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ cost(Garden.total_laborers if Garden else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ cost(Corner.total_laborers if Corner else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ cost(total.total_laborers) }}</td>
     </tr>
     <tr style="border-bottom:1px solid var(--border-soft);">
-      <td style="padding:4px 10px;color:var(--ink-muted);">{{ tr('Muzičari / Honorari') }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ fmt0(Garden.total_musicians if Garden else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ fmt0(Corner.total_musicians if Corner else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ fmt0(total.total_musicians) }}</td>
+      <td style="padding:4px 10px;color:var(--ink-muted);">{{ tr('Muzičari / honorari') }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ cost(Garden.total_musicians if Garden else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ cost(Corner.total_musicians if Corner else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ cost(total.total_musicians) }}</td>
     </tr>
     <tr style="border-bottom:1px solid var(--border-soft);">
-      <td style="padding:4px 10px;color:var(--ink-muted);">{{ tr('Oprema / Oglas. / Ostalo') }}</td>
+      <td style="padding:4px 10px;color:var(--ink-muted);">{{ tr('Oprema / oglašavanje / ostalo') }}</td>
       <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">
-        {{ fmt0((Garden.total_equipment or 0) + (Garden.total_advertising or 0) + (Garden.total_debit or 0) + (Garden.total_other_exp or 0) if Garden else none) }}
+        {{ cost((Garden.total_equipment or 0) + (Garden.total_advertising or 0) + (Garden.total_debit or 0) + (Garden.total_other_exp or 0) if Garden else none) }}
       </td>
       <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">
-        {{ fmt0((Corner.total_equipment or 0) + (Corner.total_advertising or 0) + (Corner.total_debit or 0) + (Corner.total_other_exp or 0) if Corner else none) }}
+        {{ cost((Corner.total_equipment or 0) + (Corner.total_advertising or 0) + (Corner.total_debit or 0) + (Corner.total_other_exp or 0) if Corner else none) }}
       </td>
       <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">
-        {{ fmt0((total.total_equipment or 0) + (total.total_advertising or 0) + (total.total_debit or 0) + (total.total_other_exp or 0)) }}
+        {{ cost((total.total_equipment or 0) + (total.total_advertising or 0) + (total.total_debit or 0) + (total.total_other_exp or 0)) }}
       </td>
     </tr>
     <tr style="border-bottom:2px solid var(--border-soft);">
-      <td style="padding:4px 10px;color:var(--ink);font-weight:500;">{{ tr('Ukupni varijabilni') }}</td>
-      <td style="text-align:right;padding:4px 10px;font-weight:600;color:var(--red);">{{ fmt0(Garden.total_variable_costs if Garden else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;font-weight:600;color:var(--red);">{{ fmt0(Corner.total_variable_costs if Corner else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;font-weight:700;color:var(--red);">{{ fmt0(total.total_variable_costs) }}</td>
+      <td style="padding:4px 10px;color:var(--ink);font-weight:500;">{{ tr('Ukupno varijabilni') }}</td>
+      <td style="text-align:right;padding:4px 10px;font-weight:600;color:var(--red);">{{ cost(Garden.total_variable_costs if Garden else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;font-weight:600;color:var(--red);">{{ cost(Corner.total_variable_costs if Corner else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;font-weight:700;color:var(--red);">{{ cost(total.total_variable_costs) }}</td>
     </tr>
-    {% if show_fiksni %}
-    <tr style="border-bottom:1px solid var(--border-soft);">
-      <td style="padding:4px 10px;color:var(--ink-muted);">{{ tr('Fiksni troškovi (alokacija)') }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ fmt0(Garden.total_fixed if Garden else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ fmt0(Corner.total_fixed if Corner else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ fmt0(total.total_fixed) }}</td>
-    </tr>
-    {% endif %}
 
-    {# Standalone income streams (parking, podnajam, sponzori, ostalo) #}
-    {% for sub_key, sub_label in [('parking',tr('Parking prihod')),('podnajam',tr('Podnajam')),('sponzori',tr('Sponzori')),('ostalo',tr('Ostalo'))] %}
-    {% set sv = standalone.get(sub_key) %}
-    {% if sv is not none and sv != 0 %}
-    <tr style="border-bottom:1px solid var(--border-soft);">
-      <td style="padding:4px 10px;color:var(--green);">{{ sub_label }}</td>
-      <td style="text-align:right;padding:4px 10px;" colspan="2"></td>
-      <td style="text-align:right;padding:4px 10px;color:var(--green);font-weight:500;">{{ fmt0(sv) }}</td>
-    </tr>
-    {% endif %}
-    {% endfor %}
-
-    {# Profit section #}
+    {# ══ Venue result ══ #}
     <tr style="background:var(--surface-accent);">
-      <td colspan="4" style="padding:4px 10px;font-size:.72rem;font-weight:600;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Rezultat') }}</td>
+      <td colspan="4" style="padding:4px 10px;font-size:.72rem;font-weight:600;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Rezultat lokala') }}</td>
     </tr>
     <tr style="border-bottom:1px solid var(--border-soft);">
       <td style="padding:4px 10px;color:var(--ink);">{{ tr('Bruto profit') }}</td>
@@ -182,15 +194,70 @@
       <td style="text-align:right;padding:4px 10px;">{{ profit_val(Corner.gross_profit if Corner else none) }}</td>
       <td style="text-align:right;padding:4px 10px;">{{ profit_val(total.gross_profit) }}</td>
     </tr>
-    {% set display_net = total_net if total_net is not none else total.net_profit %}
-    <tr style="border-bottom:2px solid var(--border);background:var(--surface-muted);">
-      <td style="padding:6px 10px;font-weight:700;color:var(--ink);font-size:.9rem;">{{ tr('Neto profit') }}</td>
-      <td style="text-align:right;padding:6px 10px;font-size:.9rem;">{{ profit_val(Garden.net_profit if Garden else none) }}</td>
-      <td style="text-align:right;padding:6px 10px;font-size:.9rem;">{{ profit_val(Corner.net_profit if Corner else none) }}</td>
-      <td style="text-align:right;padding:6px 10px;font-size:.95rem;">{{ profit_val(display_net) }}</td>
+    {% if show_fiksni %}
+    <tr style="border-bottom:1px solid var(--border-soft);">
+      <td style="padding:4px 10px;color:var(--ink-muted);">{{ tr('Fiksni troškovi') }} <span style="font-size:.7rem;opacity:.7;">{{ tr('alokacija po otvorenom danu') }}</span></td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ signed(Garden.total_fixed if Garden else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ signed(Corner.total_fixed if Corner else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink-muted);">{{ signed(total.total_fixed) }}</td>
+    </tr>
+    {% endif %}
+    <tr style="border-bottom:2px solid var(--border);">
+      <td style="padding:5px 10px;color:var(--ink);font-weight:700;">{{ tr('Rezultat lokala') }} <span style="font-size:.7rem;font-weight:400;color:var(--ink-muted);">{{ tr('Vrt') }} + {{ tr('Kutak') }}</span></td>
+      <td style="text-align:right;padding:5px 10px;">{{ profit_val(pl_result) }}</td>
+      <td style="text-align:right;padding:5px 10px;">{{ profit_val(ko_result) }}</td>
+      <td style="text-align:right;padding:5px 10px;font-weight:700;">{{ profit_val(to_result) }}</td>
     </tr>
 
-    {# Operational section #}
+    {# ══ Company-level streams ══ #}
+    {% if has_extra %}
+    <tr style="background:var(--surface-accent);">
+      <td colspan="4" style="padding:4px 10px;font-size:.72rem;font-weight:600;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">
+        {{ tr('Dodatni prihodi i troškovi') }}
+        <span style="text-transform:none;letter-spacing:0;font-weight:400;opacity:.8;">— ne pripadaju nijednom lokalu</span>
+      </td>
+    </tr>
+    {% for sub_key, sub_label in [('parking', tr('Parking')),('podnajam', tr('Podnajam')),('sponzori', tr('Sponzorstva')),('ostalo', tr('Ostalo'))] %}
+    {% set sv = standalone.get(sub_key) %}
+    {% if sv is not none and sv != 0 %}
+    <tr style="border-bottom:1px solid var(--border-soft);">
+      <td style="padding:4px 10px;color:var(--ink);">{{ sub_label }}{% if detail.get(sub_key) %} <span style="font-size:.7rem;opacity:.7;">neto</span>{% endif %}</td>
+      {{ nocell() }}{{ nocell() }}
+      <td style="text-align:right;padding:4px 10px;">{{ profit_val(sv) }}</td>
+    </tr>
+    {% set d = detail.get(sub_key) %}
+    {% if d %}
+    <tr style="border-bottom:1px solid var(--border-soft);">
+      <td style="padding:2px 10px 2px 30px;color:var(--ink-muted);font-size:.76rem;">prihod</td>
+      {{ nocell() }}{{ nocell() }}
+      <td style="text-align:right;padding:2px 10px;color:var(--ink-muted);font-size:.76rem;">{{ fmt(d.income) }}</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-soft);">
+      <td style="padding:2px 10px 2px 30px;color:var(--ink-muted);font-size:.76rem;">{{ tr('trošak') }}</td>
+      {{ nocell() }}{{ nocell() }}
+      <td style="text-align:right;padding:2px 10px;color:var(--ink-muted);font-size:.76rem;">{{ cost(d.expense) }}</td>
+    </tr>
+    {% endif %}
+    {% endif %}
+    {% endfor %}
+    <tr style="border-bottom:2px solid var(--border);">
+      <td style="padding:5px 10px;color:var(--ink);font-weight:700;">{{ tr('Ukupno dodatni') }}</td>
+      {{ nocell() }}{{ nocell() }}
+      <td style="text-align:right;padding:5px 10px;font-weight:700;">{{ profit_val(standalone_total) }}</td>
+    </tr>
+    {% endif %}
+
+    {# ══ The company result ══ #}
+    <tr style="border-top:2px solid var(--border);border-bottom:2px solid var(--border);background:var(--surface-muted);">
+      <td style="padding:8px 10px;font-weight:700;color:var(--ink);font-size:.95rem;">{{ tr('Neto profit — firma') }}</td>
+      {% if has_extra %}{{ nocell() }}{{ nocell() }}{% else %}
+      <td style="text-align:right;padding:8px 10px;">{{ profit_val(pl_result) }}</td>
+      <td style="text-align:right;padding:8px 10px;">{{ profit_val(ko_result) }}</td>
+      {% endif %}
+      <td style="text-align:right;padding:8px 10px;font-size:1rem;">{{ profit_val(company_net) }}</td>
+    </tr>
+
+    {# ══ Operational ══ #}
     <tr style="background:var(--surface-accent);">
       <td colspan="4" style="padding:4px 10px;font-size:.72rem;font-weight:600;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Operativno') }}</td>
     </tr>
@@ -201,20 +268,45 @@
       <td style="text-align:right;padding:4px 10px;color:var(--ink);">{{ total.open_days }}</td>
     </tr>
     <tr style="border-bottom:1px solid var(--border-soft);">
-      <td style="padding:4px 10px;color:var(--ink-muted);">{{ tr('Broj posetilaca') }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink);">{{ fmt0(Garden.total_visitors if Garden else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink);">{{ fmt0(Corner.total_visitors if Corner else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink);">{{ fmt0(total.total_visitors) }}</td>
+      <td style="padding:4px 10px;color:var(--ink-muted);">{{ tr('Broj posetilaca') }}
+        {% if total.visitor_days is defined and total.open_days and total.visitor_days < total.open_days %}
+        <span style="font-size:.7rem;opacity:.75;">{{ tr('podaci za {a} od {b} dana', a=total.visitor_days, b=total.open_days) }}</span>
+        {% endif %}
+      </td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink);">{{ fmt(Garden.total_visitors if Garden else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink);">{{ fmt(Corner.total_visitors if Corner else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink);">{{ fmt(total.total_visitors) }}</td>
     </tr>
     <tr>
       <td style="padding:4px 10px;color:var(--ink-muted);">{{ tr('Prihod po posetiocu') }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink);">{{ fmt0(Garden.rev_per_visitor if Garden else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink);">{{ fmt0(Corner.rev_per_visitor if Corner else none) }}</td>
-      <td style="text-align:right;padding:4px 10px;color:var(--ink);">{{ fmt0(total.rev_per_visitor) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink);">{{ fmt(Garden.rev_per_visitor if Garden else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink);">{{ fmt(Corner.rev_per_visitor if Corner else none) }}</td>
+      <td style="text-align:right;padding:4px 10px;color:var(--ink);">{{ fmt(total.rev_per_visitor) }}</td>
     </tr>
   </tbody>
 </table>
 </div>
+
+{# The bridge, spelled out under the table. #}
+{% if has_extra %}
+<div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;margin-top:10px;padding:10px 14px;
+            background:var(--surface-accent);border:1px solid var(--border-soft);border-radius:var(--r-md);">
+  <div style="padding-right:18px;">
+    <div style="font-size:.68rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Rezultat lokala') }}</div>
+    <div style="font-size:.95rem;">{{ profit_val(to_result) }}</div>
+  </div>
+  <span style="font-size:1.05rem;color:var(--ink-muted);padding:0 4px;">+</span>
+  <div style="padding:0 18px;border-left:1px solid var(--border-soft);">
+    <div style="font-size:.68rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Dodatni prihodi i troškovi') }}</div>
+    <div style="font-size:.95rem;">{{ profit_val(standalone_total) }}</div>
+  </div>
+  <span style="font-size:1.05rem;color:var(--ink-muted);padding:0 4px;">=</span>
+  <div style="padding-left:18px;border-left:1px solid var(--border-soft);">
+    <div style="font-size:.68rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;">{{ tr('Neto profit firme') }}</div>
+    <div style="font-size:.95rem;">{{ profit_val(company_net) }}</div>
+  </div>
+</div>
+{% endif %}
 {% endmacro %}
 
 {# ══════════════════════════════════════════════════════════════════════
@@ -283,7 +375,7 @@
       ('fiksni',   tr('Fiksni troškovi')),
       ('parking',  tr('Parking')),
       ('podnajam', tr('Podnajam')),
-      ('sponzori', tr('Sponzori')),
+      ('sponzori', tr('Sponzorstva')),
       ('ostalo',   tr('Ostalo')),
     ] %}
     {% for val, label in stream_labels %}
@@ -306,26 +398,24 @@
 
 {# ── Period KPI summary bar ─────────────────────────────────────────── #}
 {% if period_agg %}
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px;">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:8px;">
 
-  {# Revenue tile #}
+  {# Revenue — venue revenue only; the dodatni streams have their own tile. #}
   <div style="background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--r-md);padding:12px 14px;">
-    <div style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">{{ tr('Ukupni prihod') }}</div>
+    <div style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">{{ tr('Prihod lokala') }}</div>
     <div style="font-size:1.2rem;font-weight:700;color:var(--ink);">{{ fmt0(period_agg.total_revenue) }}</div>
-    {% if period_yoy %}
     <div style="margin-top:4px;font-size:.75rem;color:var(--ink-muted);">
-      YoY: {{ trend_badge(period_yoy_revenue_pct) }}
+      {% if period_yoy_valid %}YoY: {{ trend_badge(period_yoy_revenue_pct) }}{% else %}YoY: —{% endif %}
     </div>
-    {% endif %}
   </div>
 
-  {# Variable costs tile #}
+  {# Variable costs #}
   <div style="background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--r-md);padding:12px 14px;">
     <div style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">{{ tr('Varijabilni troškovi') }}</div>
-    <div style="font-size:1.2rem;font-weight:700;color:var(--red);">{{ fmt0(period_agg.total_variable_costs) }}</div>
+    <div style="font-size:1.2rem;font-weight:700;color:var(--red);">{{ cost(period_agg.total_variable_costs) }}</div>
   </div>
 
-  {# Gross profit tile #}
+  {# Gross profit #}
   <div style="background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--r-md);padding:12px 14px;">
     <div style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">{{ tr('Bruto profit') }}</div>
     <div style="font-size:1.2rem;font-weight:700;
@@ -334,37 +424,74 @@
     </div>
   </div>
 
-  {# Net profit tile #}
+  {# Venue result — bruto + allocated fixed. The number the venues actually made. #}
   <div style="background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--r-md);padding:12px 14px;">
-    <div style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">{{ tr('Neto profit') }}</div>
+    <div style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">{{ tr('Rezultat lokala') }}</div>
     <div style="font-size:1.2rem;font-weight:700;
-      color:{% if (period_agg.net_profit + period_standalone_total) >= 0 %}var(--green){% else %}var(--red){% endif %};">
-      {{ fmt0(period_agg.net_profit + period_standalone_total) }}
+      color:{% if period_venue_result >= 0 %}var(--green){% else %}var(--red){% endif %};">
+      {{ fmt0(period_venue_result) }}
     </div>
-    {% if period_yoy %}
     <div style="margin-top:4px;font-size:.75rem;color:var(--ink-muted);">
-      YoY: {{ trend_badge(period_yoy_profit_pct) }}
+      {% if period_yoy_valid %}YoY: {{ trend_badge(period_yoy_venue_pct) }}{% else %}{{ tr('Vrt') }} + {{ tr('Kutak') }}{% endif %}
     </div>
-    {% endif %}
   </div>
 
-  {# Open days tile #}
+  {# The bridge #}
+  <div style="background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--r-md);padding:12px 14px;">
+    <div style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">{{ tr('Dodatni prihodi i troškovi') }}</div>
+    <div style="font-size:1.2rem;font-weight:700;
+      color:{% if period_standalone_total >= 0 %}var(--green){% else %}var(--red){% endif %};">
+      {{ fmt0(period_standalone_total) }}
+    </div>
+    <div style="font-size:.75rem;color:var(--ink-muted);margin-top:2px;">{{ tr('parking · podnajam · sponzorstva') }}</div>
+  </div>
+
+  {# Company result #}
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:12px 14px;
+              box-shadow:inset 0 0 0 1px var(--border-soft);">
+    <div style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">{{ tr('Neto profit — firma') }}</div>
+    <div style="font-size:1.2rem;font-weight:700;
+      color:{% if period_company_net >= 0 %}var(--green){% else %}var(--red){% endif %};">
+      {{ fmt0(period_company_net) }}
+    </div>
+    <div style="margin-top:4px;font-size:.75rem;color:var(--ink-muted);">
+      {% if period_yoy_valid %}YoY: {{ trend_badge(period_yoy_profit_pct) }}
+      {% elif period_margin is not none %}{{ tr('marža') }} {{ "{:.1f}".format(period_margin) }}%{% endif %}
+    </div>
+  </div>
+
+  {# Open days #}
   <div style="background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--r-md);padding:12px 14px;">
     <div style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">{{ tr('Otvoreni dani') }}</div>
     <div style="font-size:1.2rem;font-weight:700;color:var(--ink);">{{ period_agg.open_days }}</div>
     <div style="font-size:.75rem;color:var(--ink-muted);margin-top:2px;">{{ period_agg.special_event_count }} {{ tr('spec. događaja') }}</div>
   </div>
 
-  {# Visitors tile #}
+  {# Visitors — with coverage, so the ratio below it can be read honestly #}
   <div style="background:var(--surface);border:1px solid var(--border-soft);border-radius:var(--r-md);padding:12px 14px;">
     <div style="font-size:.7rem;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">{{ tr('Posetioci') }}</div>
     <div style="font-size:1.2rem;font-weight:700;color:var(--ink);">{{ fmt0(period_agg.total_visitors) }}</div>
-    {% if period_agg.rev_per_visitor %}
-    <div style="font-size:.75rem;color:var(--ink-muted);margin-top:2px;">{{ fmt0(period_agg.rev_per_visitor) }} {{ tr("RSD / poseti.") }}</div>
+    {% if period_agg.open_days and period_agg.visitor_days < period_agg.open_days %}
+      <div style="font-size:.75rem;color:var(--amber);margin-top:2px;">
+        {{ tr('podaci za {a} od {b} dana', a=period_agg.visitor_days, b=period_agg.open_days) }}
+      </div>
+    {% elif period_agg.rev_per_visitor %}
+      <div style="font-size:.75rem;color:var(--ink-muted);margin-top:2px;">{{ fmt0(period_agg.rev_per_visitor) }} {{ tr('RSD / poseti.') }}</div>
     {% endif %}
   </div>
 
 </div>
+
+{# Why the YoY badges are blank, when they are. #}
+{% if not period_yoy_valid and period_yoy_note %}
+<div style="margin-bottom:16px;padding:8px 12px;border-radius:var(--r-md);
+            background:var(--surface-accent);border:1px solid var(--border-soft);
+            font-size:.76rem;color:var(--ink-muted);">
+  <strong style="color:var(--ink);">{{ tr('YoY nije prikazan.') }}</strong> {{ period_yoy_note }}
+</div>
+{% else %}
+<div style="margin-bottom:16px;"></div>
+{% endif %}
 {% endif %}
 
 {# ── Empty state ───────────────────────────────────────────────────── #}
@@ -405,27 +532,35 @@
         {% endif %}
       </div>
 
-      {# Right: key metrics + indicators #}
-      <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
+      {# Right: the bridge, in the header, so it reads before the table is opened #}
+      <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;">
 
-        {# Revenue #}
         <div style="text-align:right;">
           <div style="font-size:.68rem;color:var(--ink-muted);text-transform:uppercase;">{{ tr('Prihod') }}</div>
           <div style="font-size:.9rem;font-weight:600;color:var(--ink);">{{ fmt0(agg.total_revenue) }}</div>
-          {# MoM arrow #}
           {% if item.mom_revenue_pct is not none %}
             {{ trend_arrow(item.mom_revenue_pct) }}
             <span style="font-size:.72rem;color:var(--ink-muted);">{{ "{:+.1f}".format(item.mom_revenue_pct) }}% MoM</span>
           {% endif %}
         </div>
 
-        {# Net profit #}
+        <div style="text-align:right;">
+          <div style="font-size:.68rem;color:var(--ink-muted);text-transform:uppercase;">{{ tr('Rezultat lokala') }}</div>
+          <div style="font-size:.9rem;">{{ profit_val(item.venue_result) }}</div>
+        </div>
+
+        {% if item.standalone_total %}
+        <div style="text-align:right;">
+          <div style="font-size:.68rem;color:var(--ink-muted);text-transform:uppercase;">{{ tr('Dodatni') }}</div>
+          <div style="font-size:.9rem;">{{ profit_val(item.standalone_total) }}</div>
+        </div>
+        {% endif %}
+
         <div style="text-align:right;">
           <div style="font-size:.68rem;color:var(--ink-muted);text-transform:uppercase;">{{ tr('Neto profit') }}</div>
           <div style="font-size:.9rem;">{{ profit_val(item.total_net) }}</div>
         </div>
 
-        {# Margin % #}
         {% if agg.total_revenue and agg.total_revenue > 0 %}
         <div style="text-align:right;">
           <div style="font-size:.68rem;color:var(--ink-muted);text-transform:uppercase;">{{ tr('Marža') }}</div>
@@ -436,7 +571,6 @@
         </div>
         {% endif %}
 
-        {# YoY badge #}
         {% if item.yoy_profit_pct is not none %}
         <div style="text-align:right;">
           <div style="font-size:.68rem;color:var(--ink-muted);text-transform:uppercase;">YoY profit</div>
@@ -444,7 +578,6 @@
         </div>
         {% endif %}
 
-        {# Expand icon #}
         <svg id="icon-{{ card_id }}" style="width:20px;height:20px;color:var(--ink-muted);transition:transform .2s;flex-shrink:0;"
              viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M6 8l4 4 4-4"/>
@@ -456,12 +589,17 @@
   {# Expandable body #}
   <div id="{{ card_id }}" style="display:none;">
 
-    {# Venue split table #}
     <div style="padding:14px 16px;">
-      {{ venue_split_table(split, standalone=item.get("standalone", {}), total_net=item.get("total_net"), show_fiksni=("fiksni" in selected_streams)) }}
+      {{ venue_split_table(split,
+                           standalone=item.get("standalone", {}),
+                           detail=item.get("standalone_detail", {}),
+                           total_net=item.get("total_net"),
+                           venue_result=item.get("venue_result"),
+                           standalone_total=item.get("standalone_total", 0),
+                           show_fiksni=("fiksni" in selected_streams)) }}
     </div>
 
-    {# YoY comparison panel (if available) #}
+    {# YoY comparison panel — both measures, each against its own kind #}
     {% if item.yoy %}
     {% set yoy = item.yoy %}
     <div style="margin:0 16px 14px;background:var(--surface-accent);
@@ -479,9 +617,16 @@
           </div>
         </div>
         <div>
-          <div style="font-size:.7rem;color:var(--ink-muted);">{{ tr('Neto profit') }}</div>
-          <div style="font-size:.85rem;color:var(--ink-muted);">{{ fmt0(yoy.net_profit) }} →
-            <strong>{{ fmt0(agg.net_profit) }}</strong>
+          <div style="font-size:.7rem;color:var(--ink-muted);">{{ tr('Rezultat lokala') }}</div>
+          <div style="font-size:.85rem;color:var(--ink-muted);">{{ fmt0(item.yoy_venue_result) }} →
+            <strong>{{ fmt0(item.venue_result) }}</strong>
+            {{ trend_badge(item.yoy_venue_pct, "0.72rem") }}
+          </div>
+        </div>
+        <div>
+          <div style="font-size:.7rem;color:var(--ink-muted);">{{ tr('Neto profit firme') }}</div>
+          <div style="font-size:.85rem;color:var(--ink-muted);">{{ fmt0(item.yoy_total_net) }} →
+            <strong>{{ fmt0(item.total_net) }}</strong>
             {{ trend_badge(item.yoy_profit_pct, "0.72rem") }}
           </div>
         </div>
@@ -516,7 +661,7 @@
 {% set no_data = agg.total_event_rows == 0 %}
 
 <div style="margin-bottom:10px;background:var(--surface);
-            border:1px solid {% if all_closed %}var(--border-soft){% else %}var(--border-soft){% endif %};
+            border:1px solid var(--border-soft);
             border-radius:var(--r-md);overflow:hidden;
             {% if all_closed %}opacity:0.6;{% endif %}">
 
@@ -549,7 +694,7 @@
             <div style="font-size:.88rem;font-weight:600;color:var(--ink);">{{ fmt0(agg.total_revenue) }}</div>
           </div>
           <div style="text-align:right;">
-            <div style="font-size:.68rem;color:var(--ink-muted);">{{ tr('Neto profit') }}</div>
+            <div style="font-size:.68rem;color:var(--ink-muted);">{{ tr('Rezultat lokala') }}</div>
             <div style="font-size:.88rem;">{{ profit_val(agg.net_profit) }}</div>
           </div>
         {% else %}
@@ -564,11 +709,11 @@
     </div>
   </div>
 
-  {# Day body #}
+  {# Day body — a single day never carries dodatni prihodi, those are monthly #}
   <div id="{{ card_id }}" style="display:none;">
     {% if not all_closed %}
     <div style="padding:12px 14px;">
-      {{ venue_split_table(split) }}
+      {{ venue_split_table(split, show_fiksni=("fiksni" in selected_streams)) }}
     </div>
     {% else %}
     <div style="padding:12px 14px;font-size:.82rem;color:var(--ink-muted);font-style:italic;">
